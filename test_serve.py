@@ -47,6 +47,55 @@ class SchedulerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.scheduler.schedule(value)
 
+    def pomo_item(self, auto=True):
+        return {'id': 'pomo-session', 'deadline': 600000, 'purpose': '专注',
+                'pomodoro': {'phase': 'work', 'startedAt': 0, 'phaseEndsAt': 60000,
+                             'workMinutes': 1, 'breakMinutes': 1, 'auto': auto,
+                             'waiting': False, 'stopped': False}}
+
+    def test_pomodoro_auto_and_browser_dedup(self):
+        item = self.pomo_item()
+        self.scheduler.schedule(item)
+        self.scheduler.tick(60000)
+        self.assertIn('Break', self.sent[-1][0])
+        self.assertEqual(item['pomodoro']['phase'], 'work')  # Do not mutate caller data.
+        self.scheduler.phase_event(dict(id='pomo-session', at=60000, phase='break',
+                                        waiting=False, manual=False, purpose='专注'))
+        self.assertEqual(len(self.sent), 1)
+        self.scheduler.tick(120000)
+        self.assertIn('Work', self.sent[-1][0])
+        self.assertEqual(len(self.sent), 2)
+
+    def test_pomodoro_catch_up_and_deadline_priority(self):
+        self.scheduler.schedule(self.pomo_item())
+        self.scheduler.tick(190000)
+        self.assertEqual(len(self.sent), 1)
+        self.assertEqual(self.scheduler.pending['pomodoro']['phaseEndsAt'], 240000)
+        self.scheduler.tick(600000)
+        self.assertEqual(len(self.sent), 2)
+        self.assertIn('计划时间已到', self.sent[-1][0])
+
+    def test_pomodoro_manual_wait_and_resume(self):
+        item = self.pomo_item(False)
+        self.scheduler.schedule(item)
+        self.scheduler.tick(60000)
+        self.scheduler.tick(120000)
+        self.assertEqual(len(self.sent), 1)
+        self.assertTrue(self.scheduler.pending['pomodoro']['waiting'])
+        self.scheduler.phase_event(dict(id='pomo-session', at=120000, phase='break',
+                                        waiting=False, manual=True, purpose='专注'))
+        item['pomodoro'].update(phase='break', startedAt=120000, phaseEndsAt=180000)
+        self.scheduler.schedule(item)
+        self.scheduler.tick(180000)
+        self.assertEqual(len(self.sent), 3)
+
+    def test_pomodoro_bad_duration_rejected(self):
+        for duration in [0, -1, 1.5, True, 1441]:
+            item = self.pomo_item()
+            item['pomodoro']['workMinutes'] = duration
+            with self.assertRaises(ValueError):
+                self.scheduler.schedule(item)
+
 
 class HTTPTests(unittest.TestCase):
     def setUp(self):
@@ -78,6 +127,9 @@ class HTTPTests(unittest.TestCase):
         with urlopen(Request(self.url + '/api/schedule', b'null', headers)):
             pass
         self.assertIsNone(self.scheduler.pending)
+        event = dict(id='s', at=1000, phase='break', waiting=False, manual=False, purpose='阅读')
+        with urlopen(Request(self.url + '/api/phase', json.dumps(event).encode(), headers)) as response:
+            self.assertTrue(json.load(response)['ok'])
 
     def test_reject_foreign_origin_and_host(self):
         for headers in [{'Origin': 'https://example.com'}, {'Host': 'example.com'}]:

@@ -5,8 +5,15 @@ const vm = require('node:vm');
 const source = fs.readFileSync(`${__dirname}/pdca_focus.html`, 'utf8').split('<script>')[1].split('</script>')[0];
 const KEY = 'focus_pdca_singlefile_v1';
 
-function page(storage = new Map()) {
-  const elements = new Map(), intervals = [], downloads = [];
+function page(storage = new Map(), options = {}) {
+  const elements = new Map(), intervals = [], downloads = [], notifications = [];
+  let now = options.now;
+  const Clock = now === undefined ? Date : class extends Date {
+    constructor(...args) { super(...(args.length ? args : [now])); }
+    static now() { return now; }
+  };
+  function Notification(title, config) { notifications.push({title, ...config}); this.close = () => {}; }
+  Notification.permission = 'granted';
   let failSave = false;
   function element(id) {
     if (!elements.has(id)) elements.set(id, {
@@ -21,15 +28,15 @@ function page(storage = new Map()) {
   const sandbox = {
     document: {getElementById: element, querySelectorAll: () => [], hidden: false,
       createElement: () => element('download'), body: {appendChild() {}}},
-    window: {addEventListener() {}}, location: {protocol: 'file:'},
+    window: {addEventListener() {}, Notification}, Notification, location: {protocol: 'file:'},
     localStorage: {getItem: key => storage.get(key) || null,
       setItem(key, value) { if (failSave) throw Error('Quota exceeded'); storage.set(key, value); }},
-    structuredClone, crypto: require('node:crypto').webcrypto, Date, Math, Blob,
+    structuredClone, crypto: require('node:crypto').webcrypto, Date: Clock, Math, Blob,
     URL: {createObjectURL(blob) { downloads.push(blob); return 'blob:test'; }, revokeObjectURL() {}},
     setTimeout: () => 0, clearTimeout() {}, setInterval(fn) { intervals.push(fn); }, confirm: () => true,
   };
   vm.runInNewContext(source, sandbox);
-  return {element, storage, downloads, intervals,
+  return {element, storage, downloads, intervals, notifications, setNow: value => {now = value;},
     state: () => JSON.parse(storage.get(KEY)),
     failSave: value => {failSave = value;},
     fire(id, type, target = null) {
@@ -112,4 +119,5 @@ async function main() {
   assert.equal(old.state().active.comments.length, 1);
   console.log('Checks passed: comment lifecycle and exports, single history export with comments and extensions, no unrelated records, restore, old backups.');
 }
-main().catch(error => {console.error(error); process.exitCode = 1;});
+module.exports = {page, KEY};
+if (require.main === module) main().catch(error => {console.error(error); process.exitCode = 1;});

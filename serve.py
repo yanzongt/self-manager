@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Local-only PDCA page and XFCE notification scheduler (standard library)."""
 import argparse
+import copy
 import json
 import math
 from pathlib import Path
@@ -45,24 +46,84 @@ class Scheduler:
                 raise ValueError('无效截止时间')
             if not isinstance(item.get('purpose'), str) or len(item['purpose']) > 300:
                 raise ValueError('无效目的')
+            pomo = item.get('pomodoro')
+            if pomo is not None:
+                if not isinstance(pomo, dict) or pomo.get('phase') not in ('work', 'break'):
+                    raise ValueError('无效番茄钟阶段')
+                for key in ('startedAt', 'phaseEndsAt'):
+                    value = pomo.get(key)
+                    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                        raise ValueError('无效番茄钟时间')
+                for key in ('workMinutes', 'breakMinutes'):
+                    value = pomo.get(key)
+                    if type(value) is not int or not 1 <= value <= 1440:
+                        raise ValueError('无效番茄钟时长')
+                if pomo['phaseEndsAt'] <= pomo['startedAt']:
+                    raise ValueError('无效番茄钟时间范围')
+                if any(type(pomo.get(key)) is not bool for key in ('auto', 'waiting', 'stopped')):
+                    raise ValueError('无效番茄钟切换设置')
         with self.lock:
-            self.pending = item
+            self.pending = copy.deepcopy(item)
+
+    def _send(self, key, title, body):
+        if key in self.delivered:
+            return
+        try:
+            self.sender(title, body)
+            self.error = None
+        except (RuntimeError, OSError) as exc:
+            self.error = str(exc)
+        self.delivered.add(key)
+
+    def _phase_event(self, event):
+        phase = 'Work · 专注' if event['phase'] == 'work' else 'Break · 休息'
+        title = '番茄钟：阶段结束' if event['waiting'] else f'番茄钟：进入{phase}'
+        message = f'{phase}结束，请返回页面手动开始下一阶段。' if event['waiting'] else f'已切换到{phase}。'
+        key = (event['id'], 'pomo-manual' if event.get('manual') else 'pomo', event['at'])
+        self._send(key, title, event['purpose'] + '\n' + message)
+
+    def phase_event(self, event):
+        if not isinstance(event, dict) or not isinstance(event.get('id'), str) or event.get('phase') not in ('work', 'break'):
+            raise ValueError('无效阶段通知')
+        at = event.get('at')
+        if isinstance(at, bool) or not isinstance(at, (int, float)) or not math.isfinite(at):
+            raise ValueError('无效阶段时间')
+        if type(event.get('waiting')) is not bool or type(event.get('manual')) is not bool:
+            raise ValueError('无效阶段状态')
+        if not isinstance(event.get('purpose'), str) or len(event['purpose']) > 300:
+            raise ValueError('无效目的')
+        with self.lock:
+            self._phase_event(event)
+            if self.error:
+                raise RuntimeError(self.error)
 
     def tick(self, now=None):
         with self.lock:
             item = self.pending
-            if item is None or item['deadline'] > (time.time() * 1000 if now is None else now):
+            if item is None:
                 return
-            key = (item['id'], item['deadline'])
-            if key in self.delivered:
+            now = time.time() * 1000 if now is None else now
+            if now >= item['deadline']:
+                self._send((item['id'], item['deadline']), '行为闭环：计划时间已到',
+                           item['purpose'] + '\n返回页面填写复盘，或确认延期。')
                 return
-            # Hold the lock so cancel/extend cannot overtake an in-flight alert.
-            try:
-                self.sender('行为闭环：计划时间已到', item['purpose'] + '\n返回页面填写复盘，或确认延期。')
-                self.error = None
-            except (RuntimeError, OSError) as exc:
-                self.error = str(exc)
-            self.delivered.add(key)
+            pomo = item.get('pomodoro')
+            if not pomo or pomo['waiting'] or pomo['stopped']:
+                return
+            event = None
+            while pomo['phaseEndsAt'] <= now:
+                at = pomo['phaseEndsAt']
+                if not pomo['auto']:
+                    pomo['waiting'] = True
+                    event = dict(id=item['id'], at=at, phase=pomo['phase'], waiting=True, purpose=item['purpose'])
+                    break
+                pomo['phase'] = 'break' if pomo['phase'] == 'work' else 'work'
+                pomo['startedAt'] = at
+                minutes = pomo['workMinutes'] if pomo['phase'] == 'work' else pomo['breakMinutes']
+                pomo['phaseEndsAt'] = at + minutes * 60000
+                event = dict(id=item['id'], at=at, phase=pomo['phase'], waiting=False, purpose=item['purpose'])
+            if event:
+                self._phase_event(event)
 
 
 def create_server(port, scheduler=None):
@@ -105,6 +166,8 @@ def create_server(port, scheduler=None):
                 data = json.loads(self.rfile.read(length))
                 if self.path == '/api/schedule':
                     scheduler.schedule(data)
+                elif self.path == '/api/phase':
+                    scheduler.phase_event(data)
                 elif self.path == '/api/test':
                     scheduler.sender('行为闭环：测试提醒', '桌面通知通道正常。到时请返回页面复盘。')
                 else:
