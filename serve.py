@@ -34,19 +34,22 @@ class Scheduler:
         self.sender = sender
         self.lock = threading.Lock()
         self.pending = None
+        self.pending_pomodoro = None
         self.delivered = set()
         self.error = None
 
-    def schedule(self, item):
+    def schedule(self, item, *, independent=False):
         if item is not None:
             if not isinstance(item, dict) or not isinstance(item.get('id'), str):
                 raise ValueError('无效会话')
             due = item.get('deadline')
-            if isinstance(due, bool) or not isinstance(due, (int, float)) or not math.isfinite(due):
+            if not (independent and due is None) and (isinstance(due, bool) or not isinstance(due, (int, float)) or not math.isfinite(due)):
                 raise ValueError('无效截止时间')
             if not isinstance(item.get('purpose'), str) or len(item['purpose']) > 300:
                 raise ValueError('无效目的')
             pomo = item.get('pomodoro')
+            if independent and pomo is None:
+                raise ValueError('缺少番茄钟状态')
             if pomo is not None:
                 if not isinstance(pomo, dict) or pomo.get('phase') not in ('work', 'break'):
                     raise ValueError('无效番茄钟阶段')
@@ -63,7 +66,10 @@ class Scheduler:
                 if any(type(pomo.get(key)) is not bool for key in ('auto', 'waiting', 'stopped')):
                     raise ValueError('无效番茄钟切换设置')
         with self.lock:
-            self.pending = copy.deepcopy(item)
+            if independent:
+                self.pending_pomodoro = copy.deepcopy(item)
+            else:
+                self.pending = copy.deepcopy(item)
 
     def _send(self, key, title, body):
         if key in self.delivered:
@@ -99,31 +105,35 @@ class Scheduler:
 
     def tick(self, now=None):
         with self.lock:
-            item = self.pending
-            if item is None:
-                return
             now = time.time() * 1000 if now is None else now
-            if now >= item['deadline']:
-                self._send((item['id'], item['deadline']), '行为闭环：计划时间已到',
-                           item['purpose'] + '\n返回页面填写复盘，或确认延期。')
-                return
-            pomo = item.get('pomodoro')
-            if not pomo or pomo['waiting'] or pomo['stopped']:
-                return
-            event = None
-            while pomo['phaseEndsAt'] <= now:
-                at = pomo['phaseEndsAt']
-                if not pomo['auto']:
-                    pomo['waiting'] = True
-                    event = dict(id=item['id'], at=at, phase=pomo['phase'], waiting=True, purpose=item['purpose'])
-                    break
-                pomo['phase'] = 'break' if pomo['phase'] == 'work' else 'work'
-                pomo['startedAt'] = at
-                minutes = pomo['workMinutes'] if pomo['phase'] == 'work' else pomo['breakMinutes']
-                pomo['phaseEndsAt'] = at + minutes * 60000
-                event = dict(id=item['id'], at=at, phase=pomo['phase'], waiting=False, purpose=item['purpose'])
-            if event:
-                self._phase_event(event)
+            self._tick_item(self.pending, now)
+            self._tick_item(self.pending_pomodoro, now)
+
+    def _tick_item(self, item, now):
+        if item is None:
+            return
+        now = time.time() * 1000 if now is None else now
+        if item['deadline'] is not None and now >= item['deadline']:
+            self._send((item['id'], item['deadline']), '行为闭环：计划时间已到',
+                       item['purpose'] + '\n返回页面填写复盘，或确认延期。')
+            return
+        pomo = item.get('pomodoro')
+        if not pomo or pomo['waiting'] or pomo['stopped']:
+            return
+        event = None
+        while pomo['phaseEndsAt'] <= now:
+            at = pomo['phaseEndsAt']
+            if not pomo['auto']:
+                pomo['waiting'] = True
+                event = dict(id=item['id'], at=at, phase=pomo['phase'], waiting=True, purpose=item['purpose'])
+                break
+            pomo['phase'] = 'break' if pomo['phase'] == 'work' else 'work'
+            pomo['startedAt'] = at
+            minutes = pomo['workMinutes'] if pomo['phase'] == 'work' else pomo['breakMinutes']
+            pomo['phaseEndsAt'] = at + minutes * 60000
+            event = dict(id=item['id'], at=at, phase=pomo['phase'], waiting=False, purpose=item['purpose'])
+        if event:
+            self._phase_event(event)
 
 
 def create_server(port, scheduler=None):
@@ -166,6 +176,8 @@ def create_server(port, scheduler=None):
                 data = json.loads(self.rfile.read(length))
                 if self.path == '/api/schedule':
                     scheduler.schedule(data)
+                elif self.path == '/api/pomodoro':
+                    scheduler.schedule(data, independent=True)
                 elif self.path == '/api/phase':
                     scheduler.phase_event(data)
                 elif self.path == '/api/test':

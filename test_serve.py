@@ -89,6 +89,24 @@ class SchedulerTests(unittest.TestCase):
         self.scheduler.tick(180000)
         self.assertEqual(len(self.sent), 3)
 
+    def test_independent_pomodoro_survives_session_deadline_and_cancel(self):
+        timer = {**self.pomo_item(), 'deadline': None}
+        self.scheduler.schedule(timer, independent=True)
+        self.scheduler.schedule(self.item)
+        self.scheduler.tick(1000)
+        self.assertIn('计划时间已到', self.sent[-1][0])
+        self.scheduler.schedule(None)
+        self.scheduler.tick(60000)
+        self.assertIn('Break', self.sent[-1][0])
+        self.scheduler.phase_event(dict(id=timer['id'], at=60000, phase='break',
+                                        waiting=False, manual=False, purpose='番茄钟'))
+        self.assertEqual(len(self.sent), 2)
+        self.scheduler.schedule(None, independent=True)
+        self.scheduler.schedule({**self.item, 'deadline': 120000})
+        self.scheduler.tick(120000)
+        self.assertEqual(len(self.sent), 3)
+        self.assertIn('计划时间已到', self.sent[-1][0])
+
     def test_pomodoro_bad_duration_rejected(self):
         for duration in [0, -1, 1.5, True, 1441]:
             item = self.pomo_item()
@@ -130,6 +148,20 @@ class HTTPTests(unittest.TestCase):
         event = dict(id='s', at=1000, phase='break', waiting=False, manual=False, purpose='阅读')
         with urlopen(Request(self.url + '/api/phase', json.dumps(event).encode(), headers)) as response:
             self.assertTrue(json.load(response)['ok'])
+
+    def test_authenticated_independent_timer_and_cancellation(self):
+        import re
+        with urlopen(self.url) as response:
+            page = response.read().decode()
+        token = json.loads(re.search(r'window.PDCA_NATIVE_TOKEN=("[^"]+")', page)[1])
+        headers = {'Origin': self.url, 'X-PDCA-Token': token, 'Content-Type': 'application/json'}
+        timer = SchedulerTests().pomo_item()
+        timer['deadline'] = None
+        for payload in [timer, None]:
+            with urlopen(Request(self.url + '/api/pomodoro', json.dumps(payload).encode(), headers)) as response:
+                self.assertTrue(json.load(response)['ok'])
+            self.assertEqual(self.scheduler.pending_pomodoro, payload)
+        self.assertIsNone(self.scheduler.pending)
 
     def test_reject_foreign_origin_and_host(self):
         for headers in [{'Origin': 'https://example.com'}, {'Host': 'example.com'}]:
