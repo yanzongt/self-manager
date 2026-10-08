@@ -595,6 +595,39 @@
             text-align: right
         }
 
+        .plan-row {
+            grid-template-columns: minmax(0, 1fr) auto;
+        }
+
+        .plan-targets {
+            justify-content: flex-end;
+        }
+
+        .plan-targets label {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            color: var(--muted);
+        }
+
+        .plan-targets input {
+            width: 78px;
+        }
+
+        @media(max-width:760px) {
+            .exrow.plan-row {
+                grid-template-columns: 1fr;
+            }
+
+            .plan-targets {
+                justify-content: flex-start;
+            }
+
+            .plan-targets select {
+                align-self: flex-end;
+            }
+        }
+
         .foot {
             margin-top: 26px;
             color: var(--muted);
@@ -643,6 +676,11 @@
             .top {
                 align-items: flex-start;
                 flex-direction: column
+            }
+
+            #page-schedule .panel-header {
+                flex-direction: column;
+                align-items: flex-start;
             }
 
             .top h1 {
@@ -715,8 +753,8 @@
                     <h1>力量进阶 <span class="muted" style="font-size:14px;font-weight:500">/ 居家训练管理</span></h1>
                 </div>
             </div>
-            <div class="head-actions"><button class="btn" id="exportBtn">导出数据</button><button class="btn"
-                    id="importBtn">导入备份</button><input type="file" accept="application/json,.json" id="importFile"
+            <div class="head-actions"><button class="btn" id="exportBtn">导出完整备份</button><button class="btn"
+                    id="importBtn">导入完整备份</button><input type="file" accept="application/json,.json" id="importFile"
                     hidden><button class="btn primary" id="quickLog">＋ 记一次训练</button></div>
         </header>
         <nav class="tabs" aria-label="页面切换"><button class="tab active" data-page="overview">总览</button><button
@@ -759,8 +797,12 @@
                 <div class="panel-header">
                     <div>
                         <h2>每周训练日程</h2>
-                        <p class="muted small">周一至周日固定计划，可按实际情况切换日期；每个动作的计划重量可修改并自动保存。</p>
-                    </div><button class="btn" id="resetPlans">恢复默认重量</button>
+                        <p class="muted small">选择日期后编辑组数、每组数量和重量，自动保存。同一动作在各训练日共用目标；左右侧请按备注执行。</p>
+                    </div>
+                    <div class="actions"><button class="btn" id="exportPlan">导出训练计划</button><button class="btn"
+                            id="importPlan">导入训练计划</button><input type="file" id="planFile"
+                            accept="application/json,.json" hidden><button class="btn" id="resetPlans">恢复默认训练目标</button>
+                    </div>
                 </div>
                 <div class="week" id="fullWeek"></div>
             </div>
@@ -772,6 +814,25 @@
                     </div><button class="btn primary" id="logSelected">记录这一天的训练</button>
                 </div>
                 <div id="dayDetails"></div>
+                <div class="actions" style="margin-top:16px"><select id="addExisting" aria-label="选择已有动作"
+                        class="btn"></select><button class="btn" id="addToDay">加入当天计划</button><button class="btn subtle"
+                        id="newExercise">＋ 新增动作</button></div>
+                <p class="muted small">移出当天计划不删除动作或训练记录。新增动作会加入当前选中的训练日。</p>
+            </div>
+            <div class="panel" id="exerciseEditor" hidden style="margin-top:16px">
+                <div class="panel-header">
+                    <h2 id="exerciseFormTitle">新增动作</h2>
+                </div>
+                <form id="exerciseForm" class="form-grid">
+                    <div class="field"><label for="exerciseName">动作名称</label><input id="exerciseName" maxlength="100"
+                            required></div>
+                    <div class="field"><label for="exercisePart">锻炼部位</label><input id="exercisePart" maxlength="100"
+                            required placeholder="例如：腿部、胸部、核心"></div>
+                    <div class="field full"><label for="exerciseNote">备注说明</label><textarea id="exerciseNote" rows="3"
+                            maxlength="2000" placeholder="动作要领、左右侧、注意事项等"></textarea></div>
+                    <div class="full actions"><button class="btn primary" type="submit">保存动作</button><button class="btn"
+                            id="cancelExercise" type="button">取消</button></div>
+                </form>
             </div>
         </section>
         <section class="page" id="page-logs">
@@ -786,24 +847,29 @@
                         <div class="field"><label for="logEx">训练动作</label><select id="logEx" required></select></div>
                         <div class="field"><label for="logSets">完成组数</label><input type="number" id="logSets" min="1"
                                 max="30" step="1" required value="2"></div>
-                        <div class="field"><label for="logReps">每组次数</label><input type="number" id="logReps" min="1"
-                                max="500" step="1" required value="10"></div>
+                        <div class="field"><label for="logReps" id="logRepsLabel">每组次数</label><input type="number"
+                                id="logReps" min="1" max="500" step="1" required value="10"></div>
                         <div class="field"><label for="logWeight">每手 / 负重 (kg)</label><input type="number"
-                                id="logWeight" min="0" max="1000" step="0.25" value="0" required></div>
+                                id="logWeight" min="0" max="1000" step="any" value="0" required></div>
                         <div class="field"><label for="logPain">训练时右肘疼痛 (0–10)</label><input type="number" id="logPain"
                                 min="0" max="10" step="1" value="0" required></div>
                         <div class="field full"><label for="logNote">备注（左右侧、次数不同、动作感受等）</label><textarea id="logNote"
-                                rows="2" placeholder="例如：左右腿各10次；右肘训练中轻微不适"></textarea></div>
+                                maxlength="2000" rows="2" placeholder="例如：左右腿各10次；右肘训练中轻微不适"></textarea></div>
                         <div class="full actions"><button type="submit" class="btn primary"
                                 id="saveLog">保存记录</button><button type="button" class="btn" id="cancelEdit"
                                 style="display:none">取消编辑</button></div>
                     </form>
-                    <p class="muted small">按「每组同次数」记录；如果每组次数不同，请分别录入每组或在备注说明。体重、自重动作填0kg；哑铃动作建议记录单手重量，后续保持口径一致。</p>
+                    <p class="muted small">按「每组同数量」记录；计时动作按秒记录。如果每组数量不同，请分别录入每组或在备注说明。体重、自重动作填0kg；哑铃动作建议记录单手重量，后续保持口径一致。
+                    </p>
                 </div>
                 <div class="panel">
                     <div class="panel-header">
                         <h2>训练记录</h2><span class="muted small" id="logCount"></span>
                     </div>
+                    <div class="actions" style="margin-bottom:12px"><button class="btn"
+                            id="exportLogs">导出训练记录</button><button class="btn" id="importLogs">导入训练记录</button><input
+                            type="file" id="logsFile" accept="application/json,.json" hidden></div>
+                    <p class="muted small">导出全部训练记录（不受筛选影响）；导入时合并记录，相同记录自动去重。</p>
                     <div class="field" style="margin-bottom:12px"><label for="filterEx">筛选动作</label><select
                             id="filterEx"></select></div>
                     <div class="table-wrap" id="allLogs"></div>
@@ -866,8 +932,8 @@
                                 max="300" step="0.1"></div>
                         <div class="field"><label for="thigh">大腿围 (cm)</label><input type="number" id="thigh" min="10"
                                 max="150" step="0.1"></div>
-                        <div class="field full"><label for="bodyNote">备注</label><textarea id="bodyNote" rows="2"
-                                placeholder="同一时间、同一测量位置；注明左臂或右臂"></textarea></div>
+                        <div class="field full"><label for="bodyNote">备注</label><textarea id="bodyNote" maxlength="2000"
+                                rows="2" placeholder="同一时间、同一测量位置；注明左臂或右臂"></textarea></div>
                         <div class="full actions"><button class="btn primary" type="submit">保存身体数据</button><button
                                 class="btn" type="button" id="bodyCancel" style="display:none">取消编辑</button></div>
                     </form>
@@ -896,7 +962,7 @@
                 <div class="table-wrap" id="bodyTable"></div>
             </div>
         </section>
-        <footer class="foot">数据仅保存在当前浏览器的 localStorage 中，不会上传服务器。清除网站数据、更换浏览器或设备可能导致记录丢失，请定期点击“导出数据”保存 JSON
+        <footer class="foot">数据仅保存在当前浏览器的 localStorage 中，不会上传服务器。清除网站数据、更换浏览器或设备可能导致记录丢失，请定期点击“导出完整备份”保存 JSON
             备份。网页提供训练管理功能，不替代医疗诊断或个体化康复评估。</footer>
     </div>
     <div class="toast" role="status" id="toast"></div>
@@ -904,36 +970,213 @@
         (() => {
             'use strict';
             const DAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-            const EX = [
+            let EX = [
                 ['squat', '徒手深蹲', '腿部', '3×12', '0', '保持动作控制；前2周减少组数。'], ['split', '保加利亚分腿蹲', '腿部', '每腿3×8', '0', '扶稳，后脚置于牢固矮凳。'], ['bridge', '单腿臀桥', '臀部', '每腿3×10', '0', '顶端停顿2秒。'], ['calf', '单腿提踵', '小腿', '每腿3×15', '0', '扶墙缓慢上下。'], ['deadbug', '死虫式', '核心', '每侧3×10', '0', '保持腰背稳定。'],
                 ['wallpush', '墙面/高位俯卧撑', '胸肩', '2×8–12', '0', '右肘不适则提高支撑面或停止。'], ['floorpress', '中立握哑铃地板卧推', '胸肩', '2×10', '1', '初始每手1–2kg，需先无痛测试。'], ['lateral', '哑铃侧平举', '肩部', '2×12', '0.5', '从0.5–1kg测试；不可甩动。'], ['scap', '肩胛后缩', '上背', '2×15', '0', '无负重，练习肩胛控制。'], ['wrist', '腕伸肌康复', '右肘康复', '等长3–5×20–30秒', '0', '初始等长抗阻；后续逐步加入0–0.5kg慢速训练。'],
                 ['hinge', '徒手早安式', '后链', '3×12', '0', '髋向后推，背部中立。'], ['step', '登阶', '腿部', '每腿3×10', '0', '20–40cm稳固台阶，量力而行。'], ['singleRDL', '单腿罗马尼亚硬拉', '后链', '每腿3×8', '0', '先徒手，维持骨盆水平。'], ['reverse', '反向卷腹', '腹部', '3×12', '0', '缓慢控制骨盆运动。'], ['bentcalf', '屈膝提踵', '小腿', '每腿2×15', '0', '缓慢完成。'],
                 ['ytw', '俯卧Y-T-W抬臂', '上背', '每种2×8', '0', '不持重，肩胛发力。'], ['bandrow', '轻阻力弹力带划船', '背部', '2×12', '0', '与哑铃划船二选一，若肘疼则跳过。'], ['dbrow', '单臂哑铃划船', '背部', '每侧2×10', '1', '右手从1–2kg试探；与弹力带划船二选一。'], ['fly', '俯身反向飞鸟', '肩背', '2×12', '0', '0–0.5kg起步，右肘不适则空手。']
             ].map(a => ({ id: a[0], name: a[1], part: a[2], prescription: a[3], weight: Number(a[4]), note: a[5] }));
-            const ROUTINES = { 0: { title: '休息与恢复', purpose: '完全休息或散步；关注睡眠、关节恢复。', ids: [] }, 1: { title: '下肢A · 深蹲与股四头肌', purpose: '以膝主导下肢力量、单腿控制、臀部和核心稳定为主。', ids: ['squat', 'split', 'bridge', 'calf', 'deadbug'] }, 2: { title: '上肢A · 胸肩与肘康复', purpose: '轻负荷胸肩推力与肩胛控制；严格监测右肘疼痛。', ids: ['wallpush', 'floorpress', 'lateral', 'scap', 'wrist'] }, 3: { title: '主动恢复日', purpose: '轻度有氧、拉伸或散步；不安排高强度力量训练。', ids: [] }, 4: { title: '下肢B · 后链与腰腹', purpose: '臀腿后侧、单腿平衡、腹部力量与稳定性。', ids: ['hinge', 'step', 'singleRDL', 'reverse', 'deadbug', 'bentcalf'] }, 5: { title: '上肢B · 背肩与肘康复', purpose: '肩胛和背部练习；两种划船二选一，优先无痛。', ids: ['ytw', 'bandrow', 'dbrow', 'fly', 'wrist'] }, 6: { title: '适量篮球 / 有氧', purpose: '注意篮球运动对右肘及小腿的总负荷；若症状加重则减量。', ids: [] } };
+            let ROUTINES = { 0: { title: '休息与恢复', purpose: '完全休息或散步；关注睡眠、关节恢复。', ids: [] }, 1: { title: '下肢A · 深蹲与股四头肌', purpose: '以膝主导下肢力量、单腿控制、臀部和核心稳定为主。', ids: ['squat', 'split', 'bridge', 'calf', 'deadbug'] }, 2: { title: '上肢A · 胸肩与肘康复', purpose: '轻负荷胸肩推力与肩胛控制；严格监测右肘疼痛。', ids: ['wallpush', 'floorpress', 'lateral', 'scap', 'wrist'] }, 3: { title: '主动恢复日', purpose: '轻度有氧、拉伸或散步；不安排高强度力量训练。', ids: [] }, 4: { title: '下肢B · 后链与腰腹', purpose: '臀腿后侧、单腿平衡、腹部力量与稳定性。', ids: ['hinge', 'step', 'singleRDL', 'reverse', 'deadbug', 'bentcalf'] }, 5: { title: '上肢B · 背肩与肘康复', purpose: '肩胛和背部练习；两种划船二选一，优先无痛。', ids: ['ytw', 'bandrow', 'dbrow', 'fly', 'wrist'] }, 6: { title: '适量篮球 / 有氧', purpose: '注意篮球运动对右肘及小腿的总负荷；若症状加重则减量。', ids: [] } };
+            EX = EX.map(x => { const n = x.prescription.match(/(\d+)(?:–\d+)?×(\d+)/); const { prescription, ...fields } = x; const side = prescription.match(/每腿|每侧|每种/); return { ...fields, note: (side ? side[0] + '分别完成。' : '') + x.note, sets: Number(n[1]), reps: Number(n[2]), unit: prescription.includes('秒') ? '秒' : '次' } });
+            const DEFAULT_EX = structuredClone(EX), DEFAULT_ROUTINES = structuredClone(ROUTINES);
             const K = 'strengthTracker_v1'; let data = { logs: [], body: [], weights: {} }, selectedDay = new Date().getDay(), editingLog = null, editingBody = null, currentPage = 'overview';
-            try { const raw = JSON.parse(localStorage.getItem(K) || 'null'); if (raw && typeof raw === 'object') { data = { logs: Array.isArray(raw.logs) ? raw.logs : [], body: Array.isArray(raw.body) ? raw.body : [], weights: raw.weights && typeof raw.weights === 'object' ? raw.weights : {} } } } catch (e) { console.warn('读取存储失败', e) }
-            const $ = id => document.getElementById(id); const iso = d => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-'); const today = () => iso(new Date()); const escape = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); const ex = id => EX.find(x => x.id === id); const weight = id => Number.isFinite(Number(data.weights[id])) && data.weights[id] !== undefined ? Number(data.weights[id]) : ex(id).weight; const fmt = n => Number(n).toLocaleString('zh-CN', { maximumFractionDigits: 2 }); const save = () => { try { localStorage.setItem(K, JSON.stringify(data)); return true } catch (e) { alert('本地保存失败，请导出已有记录并检查浏览器存储设置。'); return false } }; const popup = s => { const el = $('toast'); el.textContent = s; el.classList.add('show'); clearTimeout(popup.t); popup.t = setTimeout(() => el.classList.remove('show'), 2300) }; const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 9); const byDate = (a, b) => b.date.localeCompare(a.date) || (b.id || '').localeCompare(a.id || '');
+            try {
+                const raw = JSON.parse(localStorage.getItem(K) || 'null');
+                if (raw && typeof raw === 'object') {
+                    if (raw.exercises && raw.routines) { const plan = validatePlan(raw); EX = plan.exercises; ROUTINES = plan.routines; }
+                    else if (raw.weights) EX.forEach(x => { if (validWeight(raw.weights[x.id])) x.weight = raw.weights[x.id]; });
+                    data = { logs: Array.isArray(raw.logs) ? raw.logs : [], body: Array.isArray(raw.body) ? raw.body : [], weights: {} };
+                }
+            } catch (e) { console.warn('读取存储失败', e) }
+            const $ = id => document.getElementById(id); const iso = d => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-'); const today = () => iso(new Date()); const escape = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); const ex = id => EX.find(x => x.id === id); const weight = id => ex(id).weight; const fmt = n => Number(n).toLocaleString('zh-CN', { maximumFractionDigits: 2 }); const save = () => { try { localStorage.setItem(K, JSON.stringify({ ...data, exercises: EX, routines: ROUTINES })); return true } catch (e) { alert('本地保存失败，请导出已有记录并检查浏览器存储设置。'); return false } }; const popup = s => { const el = $('toast'); el.textContent = s; el.classList.add('show'); clearTimeout(popup.t); popup.t = setTimeout(() => el.classList.remove('show'), 2300) }; const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 9); const byDate = (a, b) => b.date.localeCompare(a.date) || (b.id || '').localeCompare(a.id || '');
             function go(p) { currentPage = p; document.querySelectorAll('.page').forEach(e => e.classList.toggle('active', e.id === 'page-' + p)); document.querySelectorAll('.tab').forEach(e => e.classList.toggle('active', e.dataset.page === p)); render(); window.scrollTo({ top: 0, behavior: 'smooth' }) }
             function render() { if (currentPage === 'overview') overview(); if (currentPage === 'schedule') schedule(); if (currentPage === 'logs') records(); if (currentPage === 'analysis') analysis(); if (currentPage === 'body') bodyPage() }
             function weekDates() { const d = new Date(), mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return Array.from({ length: 7 }, (_, i) => { const z = new Date(mon); z.setDate(mon.getDate() + i); return z }) }
             function weekHTML() { return weekDates().map(d => { const wd = d.getDay(), r = ROUTINES[wd], has = r.ids.length > 0; return `<button class="day ${selectedDay === wd ? 'active' : ''} ${iso(d) === today() ? 'today' : ''}" data-day="${wd}"><span class="wd">${DAYS[wd]}</span><span class="dt">${d.getMonth() + 1}/${d.getDate()}</span><span class="kind ${has ? 'train' : ''}">${escape(r.title.split(' · ')[0])}</span></button>` }).join('') }
             function attachDays(el) { el.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { selectedDay = Number(b.dataset.day); go('schedule') }) }
-            function overview() { const r = ROUTINES[new Date().getDay()]; $('todayTitle').textContent = r.title; $('todaySummary').textContent = r.purpose; const last7 = new Date(); last7.setDate(last7.getDate() - 6); const recent = data.logs.filter(x => x.date >= iso(last7)); const stats = [['累计训练记录', data.logs.length, '单个动作的记录条目'], ['近7天训练日', new Set(recent.map(x => x.date)).size, '有训练记录的日期'], ['已追踪动作', new Set(data.logs.map(x => x.exId)).size, '不同训练动作'], ['身体测量', data.body.length, '历史测量次数']]; $('stats').innerHTML = stats.map(x => `<div class="panel stat"><div class="label">${x[0]}</div><div class="num">${x[1]}</div><div class="hint">${x[2]}</div></div>`).join(''); $('miniWeek').innerHTML = weekHTML(); attachDays($('miniWeek')); const items = [...data.logs].sort(byDate).slice(0, 6); $('recentLogs').innerHTML = items.length ? items.map(x => `<div class="exrow" style="grid-template-columns:1fr auto"><div><div class="exname">${escape(ex(x.exId)?.name || x.exId)}</div><div class="exdesc">${escape(x.date)} · ${x.sets}组 × ${x.reps}次</div></div><strong>${fmt(x.weight)} kg</strong></div>`).join('') : '<div class="empty">尚无训练记录。从“记录一次训练”开始。</div>' }
-            function schedule() { $('fullWeek').innerHTML = weekHTML(); attachDays($('fullWeek')); const r = ROUTINES[selectedDay]; $('dayTitle').textContent = DAYS[selectedDay] + ' · ' + r.title; $('dayPurpose').textContent = r.purpose; const box = $('dayDetails'); box.innerHTML = r.ids.length ? r.ids.map(id => { const x = ex(id); return `<div class="exrow"><div><div class="exname">${escape(x.name)} <span class="tag">${escape(x.part)}</span></div><div class="exdesc">${escape(x.note)}</div></div><div><div class="exnumbers">${escape(x.prescription)}</div><div class="exweight">计划重量（kg）</div></div><div class="act"><input class="plan-input" type="number" min="0" max="1000" step="0.25" data-weight="${id}" value="${weight(id)}" aria-label="${escape(x.name)}计划重量"></div></div>` }).join('') : '<div class="empty">今天没有必做的力量训练。恢复也是训练计划的一部分。</div>'; $('logSelected').disabled = r.ids.length === 0; box.querySelectorAll('[data-weight]').forEach(i => i.onchange = () => { const v = Number(i.value); if (!Number.isFinite(v) || v < 0 || v > 1000) { popup('请输入合理的重量'); i.value = weight(i.dataset.weight); return } data.weights[i.dataset.weight] = v; save(); popup('计划重量已保存') }) }
-            function populate() { const option = EX.map(x => `<option value="${x.id}">${escape(x.name)}</option>`).join(''); $('logEx').innerHTML = option; $('filterEx').innerHTML = '<option value="">全部动作</option>' + option; $('trendEx').innerHTML = option }
-            function startLog(id) { editingLog = null; $('logFormTitle').textContent = '添加训练记录'; $('cancelEdit').style.display = 'none'; $('logForm').reset(); $('logDate').value = today(); $('logSets').value = 2; $('logReps').value = 10; $('logPain').value = 0; const e = EX.find(x => x.id === id) || EX[0]; $('logEx').value = e.id; $('logWeight').value = weight(e.id); go('logs') }
-            function records() { const filter = $('filterEx').value; let a = [...data.logs].sort(byDate); if (filter) a = a.filter(x => x.exId === filter); $('logCount').textContent = `${a.length} 条`; $('allLogs').innerHTML = a.length ? `<table><thead><tr><th>日期</th><th>动作</th><th>组 × 次</th><th>重量</th><th>肘痛</th><th>操作</th></tr></thead><tbody>${a.map(x => `<tr><td>${escape(x.date)}</td><td title="${escape(x.note)}">${escape(ex(x.exId)?.name || x.exId)}</td><td>${x.sets} × ${x.reps}</td><td>${fmt(x.weight)} kg</td><td>${x.pain}/10</td><td><button class="link" data-edit-log="${x.id}">编辑</button><button class="link red" data-del-log="${x.id}">删除</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">没有符合条件的训练记录</div>'; document.querySelectorAll('[data-edit-log]').forEach(b => b.onclick = () => { const x = data.logs.find(z => z.id === b.dataset.editLog); if (!x) return; editingLog = x.id; $('logFormTitle').textContent = '编辑训练记录'; $('cancelEdit').style.display = 'inline-block'; $('logDate').value = x.date; $('logEx').value = x.exId; $('logSets').value = x.sets; $('logReps').value = x.reps; $('logWeight').value = x.weight; $('logPain').value = x.pain; $('logNote').value = x.note || ''; window.scrollTo({ top: 0, behavior: 'smooth' }) }); document.querySelectorAll('[data-del-log]').forEach(b => b.onclick = () => { if (!confirm('确定删除这条训练记录？')) return; data.logs = data.logs.filter(x => x.id !== b.dataset.delLog); save(); render(); popup('已删除') }) }
-            function submitLog(e) { e.preventDefault(); const x = { id: editingLog || uid(), date: $('logDate').value, exId: $('logEx').value, sets: Number($('logSets').value), reps: Number($('logReps').value), weight: Number($('logWeight').value), pain: Number($('logPain').value), note: $('logNote').value.trim() }; if (!/^\d{4}-\d{2}-\d{2}$/.test(x.date) || !ex(x.exId) || !Number.isInteger(x.sets) || x.sets < 1 || x.sets > 30 || !Number.isInteger(x.reps) || x.reps < 1 || x.reps > 500 || !Number.isFinite(x.weight) || x.weight < 0 || x.weight > 1000 || !Number.isInteger(x.pain) || x.pain < 0 || x.pain > 10) { popup('请检查训练数据'); return } if (editingLog) { data.logs = data.logs.map(z => z.id === editingLog ? x : z) } else data.logs.push(x); if (!save()) return; editingLog = null; $('logForm').reset(); $('logDate').value = today(); $('cancelEdit').style.display = 'none'; $('logFormTitle').textContent = '添加训练记录'; render(); popup('训练记录已保存') }
-            function aggregate(arr, metric) { const by = new Map; for (const x of arr) { const z = by.get(x.date) || { date: x.date, volume: 0, best: 0, reps: 0, est1rm: 0 }; z.volume += x.sets * x.reps * x.weight; z.best = Math.max(z.best, x.weight); z.reps = Math.max(z.reps, x.reps); if (x.weight > 0 && x.reps <= 30) z.est1rm = Math.max(z.est1rm, x.weight * (1 + x.reps / 30)); by.set(x.date, z) } return [...by.values()].sort((a, b) => a.date.localeCompare(b.date)).map(x => ({ date: x.date, value: x[metric] })) }
-            function analyticsStats() { const a = data.logs, maximum = Math.max(0, ...a.map(x => x.weight)); const parts = [['记录总组数', fmt(a.reduce((s, x) => s + x.sets, 0))], ['不同动作', new Set(a.map(x => x.exId)).size], ['最高记录负重', fmt(maximum) + ' kg'], ['累计训练次数', fmt(a.reduce((s, x) => s + x.sets * x.reps, 0))]]; $('analysisStats').innerHTML = parts.map(x => `<div class="panel stat"><div class="label">${x[0]}</div><div class="num">${x[1]}</div></div>`).join('') }
-            function analysis() { analyticsStats(); let id = $('trendEx').value, metric = $('trendMetric').value; let a = aggregate(data.logs.filter(x => x.exId === id), metric); draw('strengthChart', a, 'strengthEmpty', metric === 'volume' ? 'kg·次' : metric === 'reps' ? '次' : 'kg'); const ids = [...new Set(data.logs.map(x => x.exId))]; $('bestTable').innerHTML = ids.length ? `<table><thead><tr><th>动作</th><th>最高重量</th><th>最多次数</th><th>最高估算1RM</th></tr></thead><tbody>${ids.map(id => { const a = data.logs.filter(x => x.exId === id), max = Math.max(...a.map(x => x.weight)), reps = Math.max(...a.map(x => x.reps)), rm = Math.max(0, ...a.filter(x => x.weight > 0 && x.reps <= 30).map(x => x.weight * (1 + x.reps / 30))); return `<tr><td>${escape(ex(id)?.name || id)}</td><td>${fmt(max)} kg</td><td>${reps}</td><td>${rm ? fmt(rm) + ' kg' : '—'}</td></tr>` }).join('')}</tbody></table>` : '<div class="empty">添加训练记录后显示历史最佳成绩</div>'; const weeks = new Map; for (const x of data.logs) { const d = new Date(x.date + 'T12:00:00'); if (!Number.isFinite(d.getTime())) continue; d.setDate(d.getDate() - (d.getDay() + 6) % 7); const k = iso(d); weeks.set(k, (weeks.get(k) || 0) + x.sets) } draw('weekChart', [...weeks.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, value]) => ({ date, value })), 'weekEmpty', '组') }
+            function overview() { const r = ROUTINES[new Date().getDay()]; $('todayTitle').textContent = r.title; $('todaySummary').textContent = r.purpose; const last7 = new Date(); last7.setDate(last7.getDate() - 6); const recent = data.logs.filter(x => x.date >= iso(last7)); const stats = [['累计训练记录', data.logs.length, '单个动作的记录条目'], ['近7天训练日', new Set(recent.map(x => x.date)).size, '有训练记录的日期'], ['已追踪动作', new Set(data.logs.map(x => x.exId)).size, '不同训练动作'], ['身体测量', data.body.length, '历史测量次数']]; $('stats').innerHTML = stats.map(x => `<div class="panel stat"><div class="label">${x[0]}</div><div class="num">${x[1]}</div><div class="hint">${x[2]}</div></div>`).join(''); $('miniWeek').innerHTML = weekHTML(); attachDays($('miniWeek')); const items = [...data.logs].sort(byDate).slice(0, 6); $('recentLogs').innerHTML = items.length ? items.map(x => `<div class="exrow" style="grid-template-columns:1fr auto"><div><div class="exname">${escape(ex(x.exId)?.name || x.exId)}</div><div class="exdesc">${escape(x.date)} · ${x.sets}组 × ${x.reps}${escape(x.unit || '次')}</div></div><strong>${fmt(x.weight)} kg</strong></div>`).join('') : '<div class="empty">尚无训练记录。从“记录一次训练”开始。</div>' }
+            function schedule() {
+                $('fullWeek').innerHTML = weekHTML(); attachDays($('fullWeek'));
+                const r = ROUTINES[selectedDay]; $('dayTitle').textContent = DAYS[selectedDay] + ' · ' + r.title; $('dayPurpose').textContent = r.purpose;
+                const box = $('dayDetails');
+                box.innerHTML = r.ids.length ? r.ids.map(id => {
+                    const x = ex(id);
+                    return `<div class="exrow plan-row"><div><div class="exname">${escape(x.name)} <span class="tag">${escape(x.part)}</span></div><div class="exdesc">${escape(x.note)}</div><button class="link" data-edit-ex="${id}">编辑动作</button> <button class="link red" data-remove-ex="${id}">移出当天</button></div><div class="actions plan-targets"><label class="small">组数 <input class="plan-input" type="number" min="1" max="30" step="1" data-target="sets" data-ex="${id}" value="${x.sets}" aria-label="${escape(x.name)}组数" required></label><label class="small">每组数量 <input class="plan-input" type="number" min="1" max="500" step="1" data-target="reps" data-ex="${id}" value="${x.reps}" aria-label="${escape(x.name)}每组数量" required></label><select class="btn" data-target="unit" data-ex="${id}" aria-label="${escape(x.name)}数量单位"><option ${x.unit === '次' ? 'selected' : ''}>次</option><option ${x.unit === '秒' ? 'selected' : ''}>秒</option></select><label class="small">重量 (kg) <input class="plan-input" type="number" min="0" max="1000" step="any" data-target="weight" data-ex="${id}" value="${x.weight}" aria-label="${escape(x.name)}计划重量" required></label><button class="btn subtle" style="align-self:flex-end" data-log-ex="${id}" aria-label="记录${escape(x.name)}">记录</button></div></div>`;
+                }).join('') : '<div class="empty">今天没有必做的力量训练，也可以添加动作。</div>';
+                $('logSelected').disabled = !r.ids.length;
+                box.querySelectorAll('[data-target]').forEach(i => i.onchange = () => {
+                    const x = ex(i.dataset.ex), key = i.dataset.target, v = key === 'unit' ? i.value : Number(i.value);
+                    if (!i.checkValidity() || (key === 'weight' ? !validWeight(v) : key === 'unit' ? !['次', '秒'].includes(v) : !validCount(v, key === 'sets' ? 30 : 500))) { popup('请输入范围内的有效数值'); i.value = x[key]; return; }
+                    const previous = x[key]; x[key] = v; if (!save()) { x[key] = previous; i.value = previous; return; } popup('训练目标已保存');
+                });
+                box.querySelectorAll('[data-log-ex]').forEach(b => b.onclick = () => startLog(b.dataset.logEx));
+                box.querySelectorAll('[data-edit-ex]').forEach(b => b.onclick = () => editExercise(b.dataset.editEx));
+                box.querySelectorAll('[data-remove-ex]').forEach(b => b.onclick = () => { const old = r.ids; r.ids = r.ids.filter(id => id !== b.dataset.removeEx); if (!save()) { r.ids = old; return; } schedule(); popup('已移出当天计划'); });
+                const available = EX.filter(x => !r.ids.includes(x.id));
+                $('addExisting').innerHTML = available.length ? available.map(x => `<option value="${x.id}">${escape(x.name)}</option>`).join('') : '<option value="">所有动作已加入</option>';
+                $('addToDay').disabled = !available.length;
+            }
+            let editingExercise = null;
+            function editExercise(id) {
+                editingExercise = id || null; const x = ex(id);
+                $('exerciseFormTitle').textContent = x ? '编辑动作' : '新增动作';
+                $('exerciseForm').reset(); $('exerciseName').value = x?.name || ''; $('exercisePart').value = x?.part || ''; $('exerciseNote').value = x?.note || '';
+                $('exerciseEditor').hidden = false; $('exerciseName').focus();
+            }
+            $('newExercise').onclick = () => editExercise();
+            $('cancelExercise').onclick = () => { editingExercise = null; $('exerciseEditor').hidden = true; };
+            $('exerciseForm').onsubmit = e => {
+                e.preventDefault(); const name = $('exerciseName').value.trim(), part = $('exercisePart').value.trim(), note = $('exerciseNote').value.trim();
+                if (!name || !part) { popup('请填写动作名称和锻炼部位'); return; }
+                const oldEx = structuredClone(EX), oldIds = [...ROUTINES[selectedDay].ids];
+                if (editingExercise) Object.assign(ex(editingExercise), { name, part, note });
+                else { const x = { id: uid(), name, part, note, sets: 2, reps: 10, weight: 0, unit: '次' }; EX.push(x); ROUTINES[selectedDay].ids.push(x.id); }
+                if (!save()) { EX = oldEx; ROUTINES[selectedDay].ids = oldIds; return; }
+                $('exerciseEditor').hidden = true; editingExercise = null; populate(); schedule(); popup('动作已保存');
+            };
+            $('addToDay').onclick = () => {
+                const id = $('addExisting').value, r = ROUTINES[selectedDay]; if (!ex(id) || r.ids.includes(id)) return;
+                r.ids.push(id); if (!save()) { r.ids.pop(); return; } schedule(); popup('已加入当天计划');
+            };
+            function populate() { const selections = ['logEx', 'filterEx', 'trendEx'].map(id => $(id).value); const option = EX.map(x => `<option value="${x.id}">${escape(x.name)}</option>`).join(''); $('logEx').innerHTML = option; $('filterEx').innerHTML = '<option value="">全部动作</option>' + option; $('trendEx').innerHTML = option;['logEx', 'filterEx', 'trendEx'].forEach((id, i) => { if ([...$(id).options].some(o => o.value === selections[i])) $(id).value = selections[i]; }) }
+            function startLog(id) { editingLog = null; $('logFormTitle').textContent = '添加训练记录'; $('cancelEdit').style.display = 'none'; $('logForm').reset(); $('logDate').value = today(); $('logSets').value = 2; $('logReps').value = 10; $('logPain').value = 0; const e = EX.find(x => x.id === id) || EX[0]; $('logEx').value = e.id; fillLogTarget(e.id); go('logs') }
+            function records() { const filter = $('filterEx').value; let a = [...data.logs].sort(byDate); if (filter) a = a.filter(x => x.exId === filter); $('logCount').textContent = `${a.length} 条`; $('allLogs').innerHTML = a.length ? `<table><thead><tr><th>日期</th><th>动作</th><th>组 × 数量</th><th>重量</th><th>肘痛</th><th>操作</th></tr></thead><tbody>${a.map(x => `<tr><td>${escape(x.date)}</td><td title="${escape(x.note)}">${escape(ex(x.exId)?.name || x.exId)}</td><td>${x.sets} × ${x.reps}${escape(x.unit || '次')}</td><td>${fmt(x.weight)} kg</td><td>${x.pain}/10</td><td><button class="link" data-edit-log="${x.id}">编辑</button><button class="link red" data-del-log="${x.id}">删除</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">没有符合条件的训练记录</div>'; document.querySelectorAll('[data-edit-log]').forEach(b => b.onclick = () => { const x = data.logs.find(z => z.id === b.dataset.editLog); if (!x) return; editingLog = x.id; $('logFormTitle').textContent = '编辑训练记录'; $('cancelEdit').style.display = 'inline-block'; $('logDate').value = x.date; $('logEx').value = x.exId; $('logSets').value = x.sets; $('logReps').value = x.reps; $('logRepsLabel').textContent = x.unit === '秒' ? '每组秒数' : '每组次数'; $('logWeight').value = x.weight; $('logPain').value = x.pain; $('logNote').value = x.note || ''; window.scrollTo({ top: 0, behavior: 'smooth' }) }); document.querySelectorAll('[data-del-log]').forEach(b => b.onclick = () => { if (!confirm('确定删除这条训练记录？')) return; data.logs = data.logs.filter(x => x.id !== b.dataset.delLog); save(); render(); popup('已删除') }) }
+            function submitLog(e) { e.preventDefault(); const x = { id: editingLog || uid(), date: $('logDate').value, exId: $('logEx').value, sets: Number($('logSets').value), reps: Number($('logReps').value), weight: Number($('logWeight').value), unit: editingLog && data.logs.find(z => z.id === editingLog).exId === $('logEx').value ? data.logs.find(z => z.id === editingLog).unit || '次' : ex($('logEx').value)?.unit || '次', pain: Number($('logPain').value), note: $('logNote').value.trim() }; if (!/^\d{4}-\d{2}-\d{2}$/.test(x.date) || !ex(x.exId) || !Number.isInteger(x.sets) || x.sets < 1 || x.sets > 30 || !Number.isInteger(x.reps) || x.reps < 1 || x.reps > 500 || !Number.isFinite(x.weight) || x.weight < 0 || x.weight > 1000 || !Number.isInteger(x.pain) || x.pain < 0 || x.pain > 10) { popup('请检查训练数据'); return } if (editingLog) { data.logs = data.logs.map(z => z.id === editingLog ? x : z) } else data.logs.push(x); if (!save()) return; editingLog = null; $('logForm').reset(); $('logDate').value = today(); $('cancelEdit').style.display = 'none'; $('logFormTitle').textContent = '添加训练记录'; fillLogTarget($('logEx').value); render(); popup('训练记录已保存') }
+            function aggregate(arr, metric) { const by = new Map; for (const x of arr) { if (x.unit === '秒' && ['volume', 'est1rm'].includes(metric)) continue; const z = by.get(x.date) || { date: x.date, volume: 0, best: 0, reps: 0, est1rm: 0 }; z.volume += x.sets * x.reps * x.weight; z.best = Math.max(z.best, x.weight); z.reps = Math.max(z.reps, x.reps); if (x.unit !== '秒' && x.weight > 0 && x.reps <= 30) z.est1rm = Math.max(z.est1rm, x.weight * (1 + x.reps / 30)); by.set(x.date, z) } return [...by.values()].sort((a, b) => a.date.localeCompare(b.date)).map(x => ({ date: x.date, value: x[metric] })) }
+            function analyticsStats() { const a = data.logs, maximum = Math.max(0, ...a.map(x => x.weight)); const parts = [['记录总组数', fmt(a.reduce((s, x) => s + x.sets, 0))], ['不同动作', new Set(a.map(x => x.exId)).size], ['最高记录负重', fmt(maximum) + ' kg'], ['累计训练次数', fmt(a.filter(x => x.unit !== '秒').reduce((s, x) => s + x.sets * x.reps, 0))]]; $('analysisStats').innerHTML = parts.map(x => `<div class="panel stat"><div class="label">${x[0]}</div><div class="num">${x[1]}</div></div>`).join('') }
+            function analysis() { analyticsStats(); let id = $('trendEx').value, metric = $('trendMetric').value; $('trendMetric').querySelector('[value="reps"]').textContent = ex(id)?.unit === '秒' ? '最大单组秒数' : '最大单组次数'; let a = aggregate(data.logs.filter(x => x.exId === id), metric); draw('strengthChart', a, 'strengthEmpty', metric === 'volume' ? 'kg·次' : metric === 'reps' ? (ex(id)?.unit || '次') : 'kg'); const ids = [...new Set(data.logs.map(x => x.exId))]; $('bestTable').innerHTML = ids.length ? `<table><thead><tr><th>动作</th><th>最高重量</th><th>最大单组数量</th><th>最高估算1RM</th></tr></thead><tbody>${ids.map(id => { const a = data.logs.filter(x => x.exId === id), max = Math.max(...a.map(x => x.weight)), reps = Math.max(...a.map(x => x.reps)), rm = Math.max(0, ...a.filter(x => x.unit !== '秒' && x.weight > 0 && x.reps <= 30).map(x => x.weight * (1 + x.reps / 30))); return `<tr><td>${escape(ex(id)?.name || id)}</td><td>${fmt(max)} kg</td><td>${reps}${escape(ex(id)?.unit || '次')}</td><td>${rm ? fmt(rm) + ' kg' : '—'}</td></tr>` }).join('')}</tbody></table>` : '<div class="empty">添加训练记录后显示历史最佳成绩</div>'; const weeks = new Map; for (const x of data.logs) { const d = new Date(x.date + 'T12:00:00'); if (!Number.isFinite(d.getTime())) continue; d.setDate(d.getDate() - (d.getDay() + 6) % 7); const k = iso(d); weeks.set(k, (weeks.get(k) || 0) + x.sets) } draw('weekChart', [...weeks.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, value]) => ({ date, value })), 'weekEmpty', '组') }
             function bodyPage() { const a = [...data.body].sort(byDate), m = $('bodyMetric').value; const filtered = a.filter(x => x[m] !== null && x[m] !== undefined); const latest = filtered[0], first = filtered.at(-1); const delta = latest && first ? (latest[m] - first[m]) : null; $('bodySummary').innerHTML = [['最新测量', latest ? fmt(latest[m]) : '—'], ['首次测量', first ? fmt(first[m]) : '—'], ['累计变化', delta === null ? '—' : (delta > 0 ? '+' : '') + fmt(delta)], ['测量次数', filtered.length]].map(x => `<div class="measure-item"><span class="muted small">${x[0]}</span><strong>${x[1]}</strong></div>`).join(''); draw('bodyChart', filtered.map(x => ({ date: x.date, value: Number(x[m]) })).reverse(), 'bodyEmpty', m === 'weight' ? 'kg' : 'cm'); $('bodyTable').innerHTML = a.length ? `<table><thead><tr><th>日期</th><th>体重</th><th>胸围</th><th>臂围</th><th>腰围</th><th>臀围</th><th>大腿围</th><th>操作</th></tr></thead><tbody>${a.map(x => `<tr><td>${escape(x.date)}</td>${['weight', 'chest', 'arm', 'waist', 'hip', 'thigh'].map(k => `<td>${x[k] ?? '—'}</td>`).join('')}<td><button class="link" data-edit-body="${x.id}">编辑</button><button class="link red" data-del-body="${x.id}">删除</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">尚无身体测量记录</div>'; document.querySelectorAll('[data-edit-body]').forEach(b => b.onclick = () => { const x = data.body.find(z => z.id === b.dataset.editBody); if (!x) return; editingBody = x.id; $('bodyFormTitle').textContent = '编辑身体数据'; $('bodyCancel').style.display = 'inline-block'; $('bodyDate').value = x.date;['weight', 'chest', 'arm', 'waist', 'hip', 'thigh'].forEach(k => $(k === 'weight' ? 'bodyWeight' : k).value = x[k] ?? ''); $('bodyNote').value = x.note || ''; window.scrollTo({ top: 0, behavior: 'smooth' }) }); document.querySelectorAll('[data-del-body]').forEach(b => b.onclick = () => { if (!confirm('确定删除这次身体测量记录？')) return; data.body = data.body.filter(x => x.id !== b.dataset.delBody); save(); render(); popup('已删除') }) }
             function submitBody(e) { e.preventDefault(); const x = { id: editingBody || uid(), date: $('bodyDate').value, note: $('bodyNote').value.trim() }; let filled = false; for (const k of ['weight', 'chest', 'arm', 'waist', 'hip', 'thigh']) { const v = $(k === 'weight' ? 'bodyWeight' : k).value; x[k] = v === '' ? null : Number(v); if (x[k] !== null) { filled = true; if (!Number.isFinite(x[k]) || x[k] <= 0 || x[k] > 500) { popup('请检查身体测量数值'); return } } } if (!filled) { popup('至少填写一项身体数据'); return } if (!/^\d{4}-\d{2}-\d{2}$/.test(x.date)) { popup('请选择测量日期'); return } if (editingBody) data.body = data.body.map(z => z.id === editingBody ? x : z); else data.body.push(x); if (!save()) return; editingBody = null; $('bodyForm').reset(); $('bodyDate').value = today(); $('bodyCancel').style.display = 'none'; $('bodyFormTitle').textContent = '添加身体数据'; render(); popup('身体数据已保存') }
             function draw(id, pts, emptyId, unit) { const c = $(id), empty = $(emptyId); empty.hidden = pts.length > 0; const rect = c.getBoundingClientRect(); let w = Math.max(rect.width || 500, 250), h = Math.max(rect.height || 270, 130), dpr = Math.min(devicePixelRatio || 1, 2); c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); const ctx = c.getContext('2d'); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, w, h); if (!pts.length) return; const L = 52, R = 19, T = 21, B = 39, ww = w - L - R, hh = h - T - B; const vals = pts.map(p => p.value), min = Math.min(...vals), max = Math.max(...vals); let lo = Math.min(0, min), hi = max; if (min > 0 && max - min > 0) lo = Math.max(0, min - (max - min) * .2); if (hi === lo) hi = lo + 1; else hi += (hi - lo) * .12; const xx = i => L + (pts.length === 1 ? ww / 2 : i * ww / (pts.length - 1)), yy = v => T + hh - (v - lo) / (hi - lo) * hh; ctx.font = '11px system-ui'; ctx.textBaseline = 'middle'; for (let j = 0; j <= 4; j++) { const y = T + hh * j / 4, v = hi - (hi - lo) * j / 4; ctx.strokeStyle = '#e8edf5'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(w - R, y); ctx.stroke(); ctx.textAlign = 'right'; ctx.fillStyle = '#8793a7'; ctx.fillText(fmt(v), L - 9, y) } ctx.textAlign = 'center'; ctx.textBaseline = 'top'; let steps = Math.max(1, Math.ceil(pts.length / 5)); pts.forEach((p, i) => { if (i % steps === 0 || i === pts.length - 1) { ctx.fillStyle = '#8793a7'; ctx.fillText(p.date.slice(5), xx(i), h - B + 10) } }); if (pts.length > 1) { ctx.strokeStyle = '#365fe9'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(xx(i), yy(p.value)) : ctx.moveTo(xx(i), yy(p.value))); ctx.stroke() } for (let i = 0; i < pts.length; i++) { ctx.beginPath(); ctx.arc(xx(i), yy(pts[i].value), pts.length > 35 ? 2 : 3.5, 0, Math.PI * 2); ctx.fillStyle = '#365fe9'; ctx.fill() } ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillStyle = '#8592a3'; ctx.fillText(unit, w - R, T - 16) }
-            $('logForm').addEventListener('submit', submitLog); $('bodyForm').addEventListener('submit', submitBody); $('logEx').onchange = () => { $('logWeight').value = weight($('logEx').value) }; $('filterEx').onchange = records; $('trendEx').onchange = analysis; $('trendMetric').onchange = analysis; $('bodyMetric').onchange = bodyPage; $('quickLog').onclick = () => startLog(); $('heroAction').onclick = () => { selectedDay = new Date().getDay(); go('schedule') }; $('logSelected').onclick = () => startLog(ROUTINES[selectedDay].ids[0]); $('cancelEdit').onclick = () => { editingLog = null; $('logForm').reset(); $('logDate').value = today(); $('cancelEdit').style.display = 'none'; $('logFormTitle').textContent = '添加训练记录' }; $('bodyCancel').onclick = () => { editingBody = null; $('bodyForm').reset(); $('bodyDate').value = today(); $('bodyCancel').style.display = 'none'; $('bodyFormTitle').textContent = '添加身体数据' }; $('resetPlans').onclick = () => { if (!confirm('确定恢复全部动作的默认计划重量？训练记录不会受影响。')) return; data.weights = {}; save(); render(); popup('已恢复默认计划重量') }; document.querySelectorAll('.tab').forEach(b => b.onclick = () => go(b.dataset.page)); document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go));
-            $('exportBtn').onclick = () => { const json = JSON.stringify({ app: 'strengthTracker', version: 1, exportedAt: new Date().toISOString(), ...data }, null, 2); const blob = new Blob([json], { type: 'application/json;charset=utf-8' }), url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = '力量训练备份_' + today() + '.json'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); popup('备份已导出') }; $('importBtn').onclick = () => $('importFile').click(); $('importFile').onchange = async (e) => { const f = e.target.files[0]; if (!f) return; try { if (f.size > 5e6) throw Error('文件超过5MB'); const raw = JSON.parse(await f.text()); if (raw.app !== 'strengthTracker' || !Array.isArray(raw.logs) || !Array.isArray(raw.body) || !raw.weights || typeof raw.weights !== 'object') throw Error('不是有效的训练备份'); if (!confirm(`确定用备份覆盖当前数据？备份包含 ${raw.logs.length} 条训练记录和 ${raw.body.length} 条测量记录。建议先导出当前数据。`)) return; const validLogs = raw.logs.filter(x => x && typeof x.id === 'string' && typeof x.date === 'string' && ex(x.exId) && Number.isInteger(x.sets) && x.sets >= 1 && x.sets <= 30 && Number.isInteger(x.reps) && x.reps >= 1 && x.reps <= 500 && Number.isFinite(x.weight) && x.weight >= 0 && x.weight <= 1000 && Number.isInteger(x.pain) && x.pain >= 0 && x.pain <= 10); const validBody = raw.body.filter(x => x && typeof x.id === 'string' && typeof x.date === 'string'); if (validLogs.length !== raw.logs.length || validBody.length !== raw.body.length) throw Error('备份中存在无效记录'); data = { logs: validLogs, body: validBody, weights: {} }; for (const [k, v] of Object.entries(raw.weights)) { if (ex(k) && Number.isFinite(v) && v >= 0 && v <= 1000) data.weights[k] = v } save(); render(); popup('备份导入成功') } catch (err) { alert('导入失败：' + err.message) } finally { e.target.value = '' } };
-            let resizeTimer; window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (currentPage === 'analysis') analysis(); if (currentPage === 'body') bodyPage() }, 120) }); $('logDate').value = today(); $('bodyDate').value = today(); populate(); render();
+            $('logForm').addEventListener('submit', submitLog); $('bodyForm').addEventListener('submit', submitBody); $('logEx').onchange = () => fillLogTarget($('logEx').value); $('filterEx').onchange = records; $('trendEx').onchange = analysis; $('trendMetric').onchange = analysis; $('bodyMetric').onchange = bodyPage; $('quickLog').onclick = () => startLog(); $('heroAction').onclick = () => { selectedDay = new Date().getDay(); go('schedule') }; $('logSelected').onclick = () => startLog(ROUTINES[selectedDay].ids[0]); $('cancelEdit').onclick = () => { editingLog = null; $('logForm').reset(); $('logDate').value = today(); $('cancelEdit').style.display = 'none'; $('logFormTitle').textContent = '添加训练记录'; fillLogTarget($('logEx').value) }; $('bodyCancel').onclick = () => { editingBody = null; $('bodyForm').reset(); $('bodyDate').value = today(); $('bodyCancel').style.display = 'none'; $('bodyFormTitle').textContent = '添加身体数据' }; $('resetPlans').onclick = () => { if (!confirm('恢复内置动作的默认组数、数量和重量？自定义动作和每周安排保留，训练记录不变。')) return; const previous = structuredClone(EX); EX.forEach(x => { const d = DEFAULT_EX.find(z => z.id === x.id); if (d) Object.assign(x, { sets: d.sets, reps: d.reps, weight: d.weight, unit: d.unit }); }); if (!save()) { EX = previous; return; } render(); popup('已恢复默认训练目标'); }; document.querySelectorAll('.tab').forEach(b => b.onclick = () => go(b.dataset.page)); document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go));
+            function fillLogTarget(id) {
+                const x = ex(id); if (!x) return;
+                $('logSets').value = x.sets; $('logReps').value = x.reps; $('logWeight').value = x.weight;
+                $('logRepsLabel').textContent = x.unit === '秒' ? '每组秒数' : '每组次数';
+            }
+            function validWeight(v) { return Number.isFinite(v) && v >= 0 && v <= 1000; }
+            function validCount(v, max) { return Number.isInteger(v) && v >= 1 && v <= max; }
+            function validDate(v) {
+                if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+                const d = new Date(v + 'T12:00:00Z'); return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === v;
+            }
+            function textValue(v, max, required = false) {
+                if (typeof v !== 'string' || v.length > max || (required && !v.trim())) throw Error('文本字段无效');
+                return v;
+            }
+            function validateExercises(items) {
+                if (!Array.isArray(items) || !items.length || items.length > 1000) throw Error('动作列表无效');
+                const ids = new Set();
+                return items.map(x => {
+                    if (!x || typeof x.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(x.id) || ids.has(x.id)) throw Error('动作编号无效或重复');
+                    ids.add(x.id);
+                    if (!validCount(x.sets, 30) || !validCount(x.reps, 500) || !validWeight(x.weight) || !['次', '秒'].includes(x.unit)) throw Error('动作训练目标无效');
+                    return { id: x.id, name: textValue(x.name, 100, true), part: textValue(x.part, 100, true), note: textValue(x.note, 2000), sets: x.sets, reps: x.reps, weight: x.weight, unit: x.unit };
+                });
+            }
+            function validatePlan(raw) {
+                const exercises = validateExercises(raw.exercises), ids = new Set(exercises.map(x => x.id)), routines = {};
+                for (let day = 0; day < 7; day++) {
+                    const r = raw.routines?.[day];
+                    if (!r || !Array.isArray(r.ids) || new Set(r.ids).size !== r.ids.length || r.ids.some(id => !ids.has(id))) throw Error('每周安排存在无效动作');
+                    routines[day] = { title: textValue(r.title, 200, true), purpose: textValue(r.purpose, 2000), ids: [...r.ids] };
+                }
+                return { exercises, routines };
+            }
+            function validateLogs(items, exercises) {
+                if (!Array.isArray(items) || items.length > 50000) throw Error('训练记录列表无效');
+                const ids = new Set(), exIds = new Set(exercises.map(x => x.id));
+                return items.map(x => {
+                    if (!x || typeof x.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(x.id) || ids.has(x.id) || !validDate(x.date) || !exIds.has(x.exId) || !validCount(x.sets, 30) || !validCount(x.reps, 500) || !validWeight(x.weight) || !Number.isInteger(x.pain) || x.pain < 0 || x.pain > 10 || (x.unit !== undefined && !['次', '秒'].includes(x.unit))) throw Error('训练记录无效或编号重复');
+                    ids.add(x.id);
+                    return { id: x.id, date: x.date, exId: x.exId, sets: x.sets, reps: x.reps, weight: x.weight, pain: x.pain, note: textValue(x.note ?? '', 2000), unit: x.unit || '次' };
+                });
+            }
+            function validateBody(items) {
+                if (!Array.isArray(items)) throw Error('身体数据无效'); const ids = new Set();
+                return items.map(x => {
+                    if (!x || typeof x.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(x.id) || ids.has(x.id) || !validDate(x.date)) throw Error('身体测量记录无效');
+                    ids.add(x.id); const z = { id: x.id, date: x.date, note: textValue(x.note ?? '', 2000) }; let filled = false;
+                    for (const key of ['weight', 'chest', 'arm', 'waist', 'hip', 'thigh']) { const v = x[key] ?? null; if (v !== null && (!Number.isFinite(v) || v <= 0 || v > 500)) throw Error('身体测量数值无效'); z[key] = v; if (v !== null) filled = true; }
+                    if (!filled) throw Error('身体测量记录为空'); return z;
+                });
+            }
+            function download(type, payload, name) {
+                const blob = new Blob([JSON.stringify({ app: 'strengthTracker', version: 2, type, exportedAt: new Date().toISOString(), ...payload }, null, 2)], { type: 'application/json;charset=utf-8' });
+                const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = name + '_' + today() + '.json'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); popup('已导出');
+            }
+            $('exportPlan').onclick = () => download('plan', { exercises: EX, routines: ROUTINES }, '力量训练计划');
+            $('exportLogs').onclick = () => download('records', { exercises: EX, logs: data.logs }, '力量训练记录');
+            $('exportBtn').onclick = () => download('backup', { ...data, exercises: EX, routines: ROUTINES }, '力量训练备份');
+            // Save a complete candidate before changing live state, so failed imports leave current data intact.
+            function commit(candidate) {
+                try { localStorage.setItem(K, JSON.stringify(candidate)); }
+                catch (e) { throw Error('本地保存失败，当前数据未更改'); }
+                EX = candidate.exercises; ROUTINES = candidate.routines;
+                data = { logs: candidate.logs, body: candidate.body, weights: {} };
+                editingLog = null; editingBody = null; editingExercise = null;
+                $('exerciseEditor').hidden = true; $('logForm').reset(); $('logDate').value = today(); $('cancelEdit').style.display = 'none'; $('logFormTitle').textContent = '添加训练记录';
+                $('bodyForm').reset(); $('bodyDate').value = today(); $('bodyCancel').style.display = 'none'; $('bodyFormTitle').textContent = '添加身体数据';
+                populate(); fillLogTarget($('logEx').value); render();
+            }
+            async function importFile(event, type) {
+                const file = event.target.files[0]; if (!file) return;
+                try {
+                    if (file.size > 5e6) throw Error('文件超过5MB');
+                    const raw = JSON.parse(await file.text());
+                    if (!raw || raw.app !== 'strengthTracker' || ![1, 2].includes(raw.version)) throw Error('不是有效的训练文件或版本不支持');
+                    if (raw.version === 2 && raw.type !== type) throw Error('文件类型不匹配，请使用对应的导入按钮');
+                    if (raw.version === 1 && type !== 'backup') throw Error('旧版备份请使用“导入完整备份”');
+                    let candidate = { ...structuredClone(data), exercises: structuredClone(EX), routines: structuredClone(ROUTINES) };
+                    if (type === 'plan') {
+                        const plan = validatePlan(raw), incoming = new Map(plan.exercises.map(x => [x.id, x]));
+                        // Keep the identity of exercises used by historical records when a plan replaces the catalog.
+                        for (const old of EX.filter(x => data.logs.some(log => log.exId === x.id))) {
+                            const next = incoming.get(old.id);
+                            if (!next) plan.exercises.push(structuredClone(old));
+                            else if (next.name !== old.name || next.part !== old.part) {
+                                const archived = { ...old, id: uid() }; plan.exercises.push(archived);
+                                candidate.logs.forEach(log => { if (log.exId === old.id) log.exId = archived.id; });
+                            }
+                        }
+                        candidate.exercises = plan.exercises; candidate.routines = plan.routines;
+                        if (!confirm(`导入后将替换每周训练安排和动作目标（${raw.exercises.length} 个动作）。现有训练记录及身体数据保留。是否继续？`)) return;
+                    } else if (type === 'records') {
+                        const exercises = validateExercises(raw.exercises), logs = validateLogs(raw.logs, exercises);
+                        const remap = new Map();
+                        for (const x of exercises.filter(x => logs.some(log => log.exId === x.id))) {
+                            const old = candidate.exercises.find(z => z.id === x.id);
+                            if (!old) candidate.exercises.push(x);
+                            else if (old.name !== x.name || old.part !== x.part) {
+                                const match = candidate.exercises.find(z => z.name === x.name && z.part === x.part && z.note === x.note);
+                                const id = match?.id || uid(); remap.set(x.id, id); if (!match) candidate.exercises.push({ ...x, id });
+                            }
+                        }
+                        const existing = new Map(candidate.logs.map(x => [x.id, x])); let added = 0;
+                        for (const x of logs) {
+                            x.exId = remap.get(x.exId) || x.exId; const old = existing.get(x.id);
+                            if (old) { const normalized = { id: old.id, date: old.date, exId: old.exId, sets: old.sets, reps: old.reps, weight: old.weight, pain: old.pain, note: old.note || '', unit: old.unit || '次' }; if (JSON.stringify(normalized) !== JSON.stringify(x)) throw Error('同编号记录内容冲突，请核对文件或使用完整备份恢复'); }
+                            else { candidate.logs.push(x); added++; }
+                        }
+                        if (!confirm(`将新增 ${added} 条训练记录，跳过 ${logs.length - added} 条重复记录。当前计划和身体数据保留。是否继续？`)) return;
+                    } else {
+                        let plan;
+                        if (raw.version === 1) {
+                            if (!raw.weights || typeof raw.weights !== 'object' || Array.isArray(raw.weights)) throw Error('旧版备份重量数据无效');
+                            plan = { exercises: structuredClone(DEFAULT_EX), routines: structuredClone(DEFAULT_ROUTINES) };
+                            for (const [id, v] of Object.entries(raw.weights)) { const x = plan.exercises.find(z => z.id === id); if (!x || !validWeight(v)) throw Error('旧版备份重量数据无效'); x.weight = v; }
+                        } else plan = validatePlan(raw);
+                        candidate = { ...plan, logs: validateLogs(raw.logs, plan.exercises), body: validateBody(raw.body), weights: {} };
+                        if (!confirm(`确定用备份覆盖全部当前数据？包含 ${candidate.logs.length} 条训练记录、${candidate.body.length} 条测量记录和训练计划。建议先导出当前备份。`)) return;
+                    }
+                    commit(candidate); popup('导入成功');
+                } catch (err) { alert('导入失败：' + err.message); }
+                finally { event.target.value = ''; }
+            }
+            for (const [button, input, type] of [['importPlan', 'planFile', 'plan'], ['importLogs', 'logsFile', 'records'], ['importBtn', 'importFile', 'backup']]) {
+                $(button).onclick = () => $(input).click(); $(input).onchange = e => importFile(e, type);
+            }
+            let resizeTimer; window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (currentPage === 'analysis') analysis(); if (currentPage === 'body') bodyPage() }, 120) }); $('logDate').value = today(); $('bodyDate').value = today(); populate(); fillLogTarget($('logEx').value); render();
         })();
     </script>
 </body>
