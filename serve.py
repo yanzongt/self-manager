@@ -3,11 +3,14 @@
 
 import argparse
 import copy
+import hashlib
 import json
 import math
+import os
 import secrets
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 import webbrowser
@@ -40,6 +43,155 @@ def send_notification(title, body):
         raise RuntimeError(exc.stderr.strip() or "桌面通知服务不可用") from exc
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError("桌面通知服务响应超时") from exc
+
+
+class DataConflict(ValueError):
+    pass
+
+
+class DataStore:
+    """JSON storage with atomic replacement, one backup and stale-write protection."""
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self.lock = threading.Lock()
+
+    @staticmethod
+    def validate(data):
+        if not isinstance(data, dict):
+            raise ValueError("无效数据")
+        if (
+            not isinstance(data.get("tags"), list)
+            or not data["tags"]
+            or not all(isinstance(t, str) for t in data["tags"])
+        ):
+            raise ValueError("无效项目标签")
+        if not isinstance(data.get("records"), list):
+            raise ValueError("无效历史记录")
+
+        def session(item):
+            if not isinstance(item, dict) or not all(
+                isinstance(item.get(k), str) for k in ("id", "purpose", "tag")
+            ):
+                raise ValueError("无效会话记录")
+            at = item.get("startedAt")
+            if (
+                isinstance(at, bool)
+                or not isinstance(at, (int, float))
+                or not math.isfinite(at)
+            ):
+                raise ValueError("无效会话开始时间")
+
+        for record in data["records"]:
+            session(record)
+        active = data.get("active")
+        if active is not None:
+            session(active)
+            for key in ("budgetMinutes", "extraMinutes"):
+                value = active.get(key, 0 if key == "extraMinutes" else None)
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(value)
+                    or value < 0
+                ):
+                    raise ValueError("无效会话时长")
+            Scheduler(lambda *args: None).schedule(
+                dict(
+                    id=active["id"],
+                    purpose=active["purpose"],
+                    deadline=active["startedAt"]
+                    + (active["budgetMinutes"] + active.get("extraMinutes", 0)) * 60000,
+                )
+            )
+        items = data.get("workItems", [])
+        if not isinstance(items, list) or not all(
+            isinstance(w, dict)
+            and isinstance(w.get("id"), str)
+            and isinstance(w.get("title"), str)
+            and type(w.get("important")) is bool
+            and type(w.get("urgent")) is bool
+            for w in items
+        ):
+            raise ValueError("无效工作事项")
+        pomo = data.get("pomodoro")
+        if pomo is not None:
+            Scheduler(lambda *args: None).schedule(
+                dict(
+                    id=pomo.get("id") if isinstance(pomo, dict) else None,
+                    deadline=None,
+                    purpose="番茄钟",
+                    pomodoro=pomo,
+                ),
+                independent=True,
+            )
+
+    def _read(self):
+        try:
+            raw = self.path.read_bytes()
+        except FileNotFoundError:
+            return {"data": None, "revision": None}, None
+        try:
+            document = json.loads(raw)
+            if not isinstance(document, dict) or document.get("version") != 1:
+                raise ValueError("无效文件格式")
+            self.validate(document.get("data"))
+        except (ValueError, TypeError, KeyError) as exc:
+            raise ValueError(
+                f"数据文件无法读取，请检查 {self.path.name} 或使用 "
+                f"{self.path.name}.bak 恢复；原文件未被覆盖"
+            ) from exc
+        return {
+            "data": document["data"],
+            "revision": hashlib.sha256(raw).hexdigest(),
+        }, raw
+
+    def read(self):
+        with self.lock:
+            return self._read()[0]
+
+    @staticmethod
+    def _atomic_write(path, raw):
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                dir=path.parent, prefix=path.name + ".", delete=False
+            ) as f:
+                temporary = Path(f.name)
+                f.write(raw)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temporary, path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
+    def write(self, data, revision):
+        self.validate(data)
+        raw = (
+            json.dumps(
+                {"version": 1, "data": data},
+                ensure_ascii=False,
+                indent=2,
+                allow_nan=False,
+            )
+            + "\n"
+        ).encode("utf-8")
+        with self.lock:
+            current, previous = self._read()
+            if previous == raw:
+                return {"ok": True, "revision": current["revision"]}
+            if revision != current["revision"]:
+                raise DataConflict(
+                    "数据已被其他页面修改。请先导出本页 JSON，再刷新读取最新数据，避免覆盖。"
+                )
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            if previous is not None and previous != raw:
+                self._atomic_write(
+                    self.path.with_suffix(self.path.suffix + ".bak"), previous
+                )
+            self._atomic_write(self.path, raw)
+            return {"ok": True, "revision": hashlib.sha256(raw).hexdigest()}
 
 
 class Scheduler:
@@ -199,8 +351,9 @@ class Scheduler:
             self._phase_event(event)
 
 
-def create_server(port, scheduler=None):
+def create_server(port, scheduler=None, data_path=None):
     scheduler = scheduler or Scheduler()
+    store = DataStore(data_path or PAGE.parent / "data" / "pdca.json")
     token = secrets.token_urlsafe(32)
     origin = f"http://127.0.0.1:{port}"
 
@@ -222,6 +375,9 @@ def create_server(port, scheduler=None):
         def allowed(self):
             return self.headers.get("Host") == origin.removeprefix("http://")
 
+        def authorized(self):
+            return self.allowed() and self.headers.get("X-PDCA-Token") == token
+
         def do_GET(self):
             if not self.allowed():
                 return self.reply(403, {"error": "Invalid host"})
@@ -234,6 +390,13 @@ def create_server(port, scheduler=None):
                     1,
                 )
                 return self.reply(200, page.encode(), "text/html; charset=utf-8")
+            if self.path == "/api/data":
+                if not self.authorized():
+                    return self.reply(403, {"error": "Invalid token"})
+                try:
+                    return self.reply(200, store.read())
+                except (ValueError, OSError) as exc:
+                    return self.reply(500, {"error": str(exc)})
             if self.path == "/api/status":
                 with scheduler.lock:
                     return self.reply(
@@ -254,9 +417,16 @@ def create_server(port, scheduler=None):
                 return self.reply(403, {"error": "Invalid origin or token"})
             try:
                 length = int(self.headers.get("Content-Length", "0"))
-                if not 0 < length <= 4096:
+                limit = 16 * 1024 * 1024 if self.path == "/api/data" else 4096
+                if not 0 < length <= limit:
                     raise ValueError("无效请求大小")
                 data = json.loads(self.rfile.read(length))
+                if self.path == "/api/data":
+                    if not isinstance(data, dict) or "revision" not in data:
+                        raise ValueError("缺少数据版本")
+                    return self.reply(
+                        200, store.write(data.get("data"), data["revision"])
+                    )
                 if self.path == "/api/schedule":
                     scheduler.schedule(data)
                 elif self.path == "/api/pomodoro":
@@ -270,10 +440,42 @@ def create_server(port, scheduler=None):
                 else:
                     return self.reply(404, {"error": "Not found"})
                 self.reply(200, {"ok": True})
-            except (ValueError, RuntimeError, OSError) as exc:
+            except DataConflict as exc:
+                self.reply(409, {"error": str(exc)})
+            except OSError as exc:
+                self.reply(500, {"error": str(exc)})
+            except (ValueError, RuntimeError) as exc:
                 self.reply(400, {"error": str(exc)})
 
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server.data_store = store
+    # Restore reminders from disk, including when no browser is open after restart.
+    try:
+        saved = store.read()["data"]
+    except (ValueError, OSError):
+        saved = None  # The data endpoint reports the error; do not overwrite the file.
+    if saved:
+        active = saved.get("active")
+        if active:
+            scheduler.schedule(
+                dict(
+                    id=active["id"],
+                    purpose=active["purpose"],
+                    deadline=active["startedAt"]
+                    + (active["budgetMinutes"] + active.get("extraMinutes", 0)) * 60000,
+                )
+            )
+        pomo = saved.get("pomodoro")
+        if pomo:
+            scheduler.schedule(
+                dict(
+                    id=pomo["id"],
+                    purpose="番茄钟",
+                    deadline=None,
+                    pomodoro=pomo,
+                ),
+                independent=True,
+            )
     return server, scheduler
 
 
@@ -281,8 +483,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument(
+        "--data-file", type=Path, default=PAGE.parent / "data" / "pdca.json"
+    )
     args = parser.parse_args()
-    server, scheduler = create_server(args.port)
+    server, scheduler = create_server(args.port, data_path=args.data_file)
     stopped = threading.Event()
 
     def worker():
@@ -291,7 +496,10 @@ def main():
 
     threading.Thread(target=worker, daemon=True).start()
     url = f"http://127.0.0.1:{args.port}"
-    print(f"行为闭环：{url}\n请保持此进程运行；Ctrl+C 退出。", flush=True)
+    print(
+        f"行为闭环：{url}\n数据文件：{server.data_store.path.resolve()}\n请保持此进程运行；Ctrl+C 退出。",
+        flush=True,
+    )
     if not args.no_browser:
         webbrowser.open(url)
     try:
