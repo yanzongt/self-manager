@@ -628,6 +628,21 @@
             }
         }
 
+        .library-layout { grid-template-columns: minmax(220px, .7fr) minmax(0, 1.5fr); align-items: start; }
+        .library-layout > .panel { min-width: 0; }
+        .library-list { display: grid; gap: 8px; max-height: 720px; overflow-y: auto; }
+        .library-item { width: 100%; text-align: left; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--ink); overflow-wrap: anywhere; }
+        .library-item.active { border-color: var(--brand); background: var(--brand2); }
+        .library-item strong, .library-item .small { display: block; }
+        .library-item .small { margin-top: 7px; }
+        .guide-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; margin: 12px 0 22px; }
+        .library-name { overflow-wrap: anywhere; }
+        .library-plan { display: block; width: 100%; text-align: left; margin-top: 10px; white-space: normal; line-height: 1.8; }
+        @media(max-width:760px) {
+            .library-layout { grid-template-columns: 1fr; }
+            .library-list { max-height: 290px; }
+            #page-library .panel-header { align-items: flex-start; flex-wrap: wrap; }
+        }
         .foot {
             margin-top: 26px;
             color: var(--muted);
@@ -758,7 +773,7 @@
                     hidden><button class="btn primary" id="quickLog">＋ 记一次训练</button></div>
         </header>
         <nav class="tabs" aria-label="页面切换"><button class="tab active" data-page="overview">总览</button><button
-                class="tab" data-page="schedule">训练日程</button><button class="tab" data-page="logs">训练记录</button><button
+                class="tab" data-page="schedule">训练日程</button><button class="tab" data-page="library">动作仓库</button><button class="tab" data-page="logs">训练记录</button><button
                 class="tab" data-page="analysis">力量分析</button><button class="tab" data-page="body">身体数据</button></nav>
         <section class="page active" id="page-overview">
             <div class="hero">
@@ -819,7 +834,7 @@
                         id="newExercise">＋ 新增动作</button></div>
                 <p class="muted small">移出当天计划不删除动作或训练记录。新增动作会加入当前选中的训练日。</p>
             </div>
-            <div class="panel" id="exerciseEditor" hidden style="margin-top:16px">
+            <div id="scheduleEditorHost"><div class="panel" id="exerciseEditor" hidden style="margin-top:16px">
                 <div class="panel-header">
                     <h2 id="exerciseFormTitle">新增动作</h2>
                 </div>
@@ -830,9 +845,24 @@
                             required placeholder="例如：腿部、胸部、核心"></div>
                     <div class="field full"><label for="exerciseNote">备注说明</label><textarea id="exerciseNote" rows="3"
                             maxlength="2000" placeholder="动作要领、左右侧、注意事项等"></textarea></div>
+                    <div class="field full"><label for="exerciseGuide">动作指南</label><textarea id="exerciseGuide" rows="6" maxlength="10000" placeholder="填写准备姿势、动作步骤、呼吸方式及注意事项，可分行记录"></textarea></div>
                     <div class="full actions"><button class="btn primary" type="submit">保存动作</button><button class="btn"
                             id="cancelExercise" type="button">取消</button></div>
                 </form>
+            </div></div>
+        </section>
+        <section class="page" id="page-library">
+            <div class="panel" style="margin-bottom:16px">
+                <div class="panel-header"><div><h2>动作仓库</h2><p class="muted small">统一管理动作和动作指南，选择动作查看相关计划与训练记录。</p></div><button class="btn primary" id="libraryNew">＋ 新增动作</button></div>
+                <div class="form-grid">
+                    <div class="field"><label for="librarySearch">搜索动作</label><input type="search" id="librarySearch" placeholder="搜索名称、部位、备注或指南"></div>
+                    <div class="field"><label for="libraryPart">锻炼部位</label><select id="libraryPart"><option value="">全部部位</option></select></div>
+                </div>
+            </div>
+            <div id="libraryEditorHost"></div>
+            <div class="grid library-layout" id="libraryLayout">
+                <div class="panel"><div class="panel-header"><h2>全部动作</h2><span class="muted small" id="libraryCount"></span></div><div id="libraryList" class="library-list"></div></div>
+                <div class="panel" id="libraryDetail" aria-live="polite"></div>
             </div>
         </section>
         <section class="page" id="page-logs">
@@ -977,9 +1007,9 @@
                 ['ytw', '俯卧Y-T-W抬臂', '上背', '每种2×8', '0', '不持重，肩胛发力。'], ['bandrow', '轻阻力弹力带划船', '背部', '2×12', '0', '与哑铃划船二选一，若肘疼则跳过。'], ['dbrow', '单臂哑铃划船', '背部', '每侧2×10', '1', '右手从1–2kg试探；与弹力带划船二选一。'], ['fly', '俯身反向飞鸟', '肩背', '2×12', '0', '0–0.5kg起步，右肘不适则空手。']
             ].map(a => ({ id: a[0], name: a[1], part: a[2], prescription: a[3], weight: Number(a[4]), note: a[5] }));
             let ROUTINES = { 0: { title: '休息与恢复', purpose: '完全休息或散步；关注睡眠、关节恢复。', ids: [] }, 1: { title: '下肢A · 深蹲与股四头肌', purpose: '以膝主导下肢力量、单腿控制、臀部和核心稳定为主。', ids: ['squat', 'split', 'bridge', 'calf', 'deadbug'] }, 2: { title: '上肢A · 胸肩与肘康复', purpose: '轻负荷胸肩推力与肩胛控制；严格监测右肘疼痛。', ids: ['wallpush', 'floorpress', 'lateral', 'scap', 'wrist'] }, 3: { title: '主动恢复日', purpose: '轻度有氧、拉伸或散步；不安排高强度力量训练。', ids: [] }, 4: { title: '下肢B · 后链与腰腹', purpose: '臀腿后侧、单腿平衡、腹部力量与稳定性。', ids: ['hinge', 'step', 'singleRDL', 'reverse', 'deadbug', 'bentcalf'] }, 5: { title: '上肢B · 背肩与肘康复', purpose: '肩胛和背部练习；两种划船二选一，优先无痛。', ids: ['ytw', 'bandrow', 'dbrow', 'fly', 'wrist'] }, 6: { title: '适量篮球 / 有氧', purpose: '注意篮球运动对右肘及小腿的总负荷；若症状加重则减量。', ids: [] } };
-            EX = EX.map(x => { const n = x.prescription.match(/(\d+)(?:–\d+)?×(\d+)/); const { prescription, ...fields } = x; const side = prescription.match(/每腿|每侧|每种/); return { ...fields, note: (side ? side[0] + '分别完成。' : '') + x.note, sets: Number(n[1]), reps: Number(n[2]), unit: prescription.includes('秒') ? '秒' : '次' } });
+            EX = EX.map(x => { const n = x.prescription.match(/(\d+)(?:–\d+)?×(\d+)/); const { prescription, ...fields } = x; const side = prescription.match(/每腿|每侧|每种/); return { ...fields, note: (side ? side[0] + '分别完成。' : '') + x.note, sets: Number(n[1]), reps: Number(n[2]), guide: '', unit: prescription.includes('秒') ? '秒' : '次' } });
             const DEFAULT_EX = structuredClone(EX), DEFAULT_ROUTINES = structuredClone(ROUTINES);
-            const K = 'strengthTracker_v1'; let data = { logs: [], body: [], weights: {} }, selectedDay = new Date().getDay(), editingLog = null, editingBody = null, currentPage = 'overview';
+            const K = 'strengthTracker_v1'; let data = { logs: [], body: [], weights: {} }, selectedDay = new Date().getDay(), editingLog = null, editingBody = null, currentPage = 'overview', selectedExercise = null;
             try {
                 const raw = JSON.parse(localStorage.getItem(K) || 'null');
                 if (raw && typeof raw === 'object') {
@@ -989,8 +1019,8 @@
                 }
             } catch (e) { console.warn('读取存储失败', e) }
             const $ = id => document.getElementById(id); const iso = d => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-'); const today = () => iso(new Date()); const escape = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); const ex = id => EX.find(x => x.id === id); const weight = id => ex(id).weight; const fmt = n => Number(n).toLocaleString('zh-CN', { maximumFractionDigits: 2 }); const save = () => { try { localStorage.setItem(K, JSON.stringify({ ...data, exercises: EX, routines: ROUTINES })); return true } catch (e) { alert('本地保存失败，请导出已有记录并检查浏览器存储设置。'); return false } }; const popup = s => { const el = $('toast'); el.textContent = s; el.classList.add('show'); clearTimeout(popup.t); popup.t = setTimeout(() => el.classList.remove('show'), 2300) }; const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 9); const byDate = (a, b) => b.date.localeCompare(a.date) || (b.id || '').localeCompare(a.id || '');
-            function go(p) { currentPage = p; document.querySelectorAll('.page').forEach(e => e.classList.toggle('active', e.id === 'page-' + p)); document.querySelectorAll('.tab').forEach(e => e.classList.toggle('active', e.dataset.page === p)); render(); window.scrollTo({ top: 0, behavior: 'smooth' }) }
-            function render() { if (currentPage === 'overview') overview(); if (currentPage === 'schedule') schedule(); if (currentPage === 'logs') records(); if (currentPage === 'analysis') analysis(); if (currentPage === 'body') bodyPage() }
+            function go(p) { if (p !== currentPage) { $('exerciseEditor').hidden = true; editingExercise = null; } currentPage = p; document.querySelectorAll('.page').forEach(e => e.classList.toggle('active', e.id === 'page-' + p)); document.querySelectorAll('.tab').forEach(e => e.classList.toggle('active', e.dataset.page === p)); render(); window.scrollTo({ top: 0, behavior: 'smooth' }) }
+            function render() { if (currentPage === 'overview') overview(); if (currentPage === 'schedule') schedule(); if (currentPage === 'library') library(); if (currentPage === 'logs') records(); if (currentPage === 'analysis') analysis(); if (currentPage === 'body') bodyPage() }
             function weekDates() { const d = new Date(), mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return Array.from({ length: 7 }, (_, i) => { const z = new Date(mon); z.setDate(mon.getDate() + i); return z }) }
             function weekHTML() { return weekDates().map(d => { const wd = d.getDay(), r = ROUTINES[wd], has = r.ids.length > 0; return `<button class="day ${selectedDay === wd ? 'active' : ''} ${iso(d) === today() ? 'today' : ''}" data-day="${wd}"><span class="wd">${DAYS[wd]}</span><span class="dt">${d.getMonth() + 1}/${d.getDate()}</span><span class="kind ${has ? 'train' : ''}">${escape(r.title.split(' · ')[0])}</span></button>` }).join('') }
             function attachDays(el) { el.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { selectedDay = Number(b.dataset.day); go('schedule') }) }
@@ -1001,7 +1031,7 @@
                 const box = $('dayDetails');
                 box.innerHTML = r.ids.length ? r.ids.map(id => {
                     const x = ex(id);
-                    return `<div class="exrow plan-row"><div><div class="exname">${escape(x.name)} <span class="tag">${escape(x.part)}</span></div><div class="exdesc">${escape(x.note)}</div><button class="link" data-edit-ex="${id}">编辑动作</button> <button class="link red" data-remove-ex="${id}">移出当天</button></div><div class="actions plan-targets"><label class="small">组数 <input class="plan-input" type="number" min="1" max="30" step="1" data-target="sets" data-ex="${id}" value="${x.sets}" aria-label="${escape(x.name)}组数" required></label><label class="small">每组数量 <input class="plan-input" type="number" min="1" max="500" step="1" data-target="reps" data-ex="${id}" value="${x.reps}" aria-label="${escape(x.name)}每组数量" required></label><select class="btn" data-target="unit" data-ex="${id}" aria-label="${escape(x.name)}数量单位"><option ${x.unit === '次' ? 'selected' : ''}>次</option><option ${x.unit === '秒' ? 'selected' : ''}>秒</option></select><label class="small">重量 (kg) <input class="plan-input" type="number" min="0" max="1000" step="any" data-target="weight" data-ex="${id}" value="${x.weight}" aria-label="${escape(x.name)}计划重量" required></label><button class="btn subtle" style="align-self:flex-end" data-log-ex="${id}" aria-label="记录${escape(x.name)}">记录</button></div></div>`;
+                    return `<div class="exrow plan-row"><div><div class="exname"><button class="link" style="font:inherit" data-view-ex="${id}">${escape(x.name)}</button> <span class="tag">${escape(x.part)}</span></div><div class="exdesc">${escape(x.note)}</div><button class="link" data-edit-ex="${id}">编辑动作</button> <button class="link red" data-remove-ex="${id}">移出当天</button></div><div class="actions plan-targets"><label class="small">组数 <input class="plan-input" type="number" min="1" max="30" step="1" data-target="sets" data-ex="${id}" value="${x.sets}" aria-label="${escape(x.name)}组数" required></label><label class="small">每组数量 <input class="plan-input" type="number" min="1" max="500" step="1" data-target="reps" data-ex="${id}" value="${x.reps}" aria-label="${escape(x.name)}每组数量" required></label><select class="btn" data-target="unit" data-ex="${id}" aria-label="${escape(x.name)}数量单位"><option ${x.unit === '次' ? 'selected' : ''}>次</option><option ${x.unit === '秒' ? 'selected' : ''}>秒</option></select><label class="small">重量 (kg) <input class="plan-input" type="number" min="0" max="1000" step="any" data-target="weight" data-ex="${id}" value="${x.weight}" aria-label="${escape(x.name)}计划重量" required></label><button class="btn subtle" style="align-self:flex-end" data-log-ex="${id}" aria-label="记录${escape(x.name)}">记录</button></div></div>`;
                 }).join('') : '<div class="empty">今天没有必做的力量训练，也可以添加动作。</div>';
                 $('logSelected').disabled = !r.ids.length;
                 box.querySelectorAll('[data-target]').forEach(i => i.onchange = () => {
@@ -1009,6 +1039,7 @@
                     if (!i.checkValidity() || (key === 'weight' ? !validWeight(v) : key === 'unit' ? !['次', '秒'].includes(v) : !validCount(v, key === 'sets' ? 30 : 500))) { popup('请输入范围内的有效数值'); i.value = x[key]; return; }
                     const previous = x[key]; x[key] = v; if (!save()) { x[key] = previous; i.value = previous; return; } popup('训练目标已保存');
                 });
+                box.querySelectorAll('[data-view-ex]').forEach(b => b.onclick = () => showExercise(b.dataset.viewEx));
                 box.querySelectorAll('[data-log-ex]').forEach(b => b.onclick = () => startLog(b.dataset.logEx));
                 box.querySelectorAll('[data-edit-ex]').forEach(b => b.onclick = () => editExercise(b.dataset.editEx));
                 box.querySelectorAll('[data-remove-ex]').forEach(b => b.onclick = () => { const old = r.ids; r.ids = r.ids.filter(id => id !== b.dataset.removeEx); if (!save()) { r.ids = old; return; } schedule(); popup('已移出当天计划'); });
@@ -1020,24 +1051,74 @@
             function editExercise(id) {
                 editingExercise = id || null; const x = ex(id);
                 $('exerciseFormTitle').textContent = x ? '编辑动作' : '新增动作';
-                $('exerciseForm').reset(); $('exerciseName').value = x?.name || ''; $('exercisePart').value = x?.part || ''; $('exerciseNote').value = x?.note || '';
+                $('exerciseForm').reset(); $('exerciseName').value = x?.name || ''; $('exercisePart').value = x?.part || ''; $('exerciseNote').value = x?.note || ''; $('exerciseGuide').value = x?.guide || '';
+                $(currentPage === 'library' ? 'libraryEditorHost' : 'scheduleEditorHost').appendChild($('exerciseEditor'));
                 $('exerciseEditor').hidden = false; $('exerciseName').focus();
             }
             $('newExercise').onclick = () => editExercise();
             $('cancelExercise').onclick = () => { editingExercise = null; $('exerciseEditor').hidden = true; };
             $('exerciseForm').onsubmit = e => {
-                e.preventDefault(); const name = $('exerciseName').value.trim(), part = $('exercisePart').value.trim(), note = $('exerciseNote').value.trim();
+                e.preventDefault(); const name = $('exerciseName').value.trim(), part = $('exercisePart').value.trim(), note = $('exerciseNote').value.trim(), guide = $('exerciseGuide').value.trim();
                 if (!name || !part) { popup('请填写动作名称和锻炼部位'); return; }
                 const oldEx = structuredClone(EX), oldIds = [...ROUTINES[selectedDay].ids];
-                if (editingExercise) Object.assign(ex(editingExercise), { name, part, note });
-                else { const x = { id: uid(), name, part, note, sets: 2, reps: 10, weight: 0, unit: '次' }; EX.push(x); ROUTINES[selectedDay].ids.push(x.id); }
+                if (editingExercise) Object.assign(ex(editingExercise), { name, part, note, guide });
+                else { const x = { id: uid(), name, part, note, guide, sets: 2, reps: 10, weight: 0, unit: '次' }; EX.push(x); if (currentPage === 'schedule') ROUTINES[selectedDay].ids.push(x.id); }
                 if (!save()) { EX = oldEx; ROUTINES[selectedDay].ids = oldIds; return; }
-                $('exerciseEditor').hidden = true; editingExercise = null; populate(); schedule(); popup('动作已保存');
+                if (currentPage === 'library') { selectedExercise = editingExercise || EX.at(-1).id; $('librarySearch').value = ''; $('libraryPart').value = ''; }
+                $('exerciseEditor').hidden = true; editingExercise = null; populate(); render(); popup('动作已保存');
             };
             $('addToDay').onclick = () => {
                 const id = $('addExisting').value, r = ROUTINES[selectedDay]; if (!ex(id) || r.ids.includes(id)) return;
                 r.ids.push(id); if (!save()) { r.ids.pop(); return; } schedule(); popup('已加入当天计划');
             };
+            function showExercise(id) {
+                selectedExercise = id; $('librarySearch').value = ''; $('libraryPart').value = ''; go('library');
+            }
+            function library() {
+                const part = $('libraryPart').value, query = $('librarySearch').value.trim().toLocaleLowerCase();
+                const parts = [...new Set(EX.map(x => x.part))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+                $('libraryPart').innerHTML = '<option value="">全部部位</option>' + parts.map(p => `<option value="${escape(p)}">${escape(p)}</option>`).join('');
+                $('libraryPart').value = parts.includes(part) ? part : '';
+                const visible = EX.filter(x => (!$('libraryPart').value || x.part === $('libraryPart').value) && [x.name, x.part, x.note, x.guide || ''].some(v => v.toLocaleLowerCase().includes(query)));
+                if (!visible.some(x => x.id === selectedExercise)) selectedExercise = visible[0]?.id || null;
+                $('libraryCount').textContent = `${visible.length} / ${EX.length} 个`;
+                $('libraryList').innerHTML = visible.length ? visible.map(x => {
+                    const plans = Object.values(ROUTINES).filter(r => r.ids.includes(x.id)).length, logs = data.logs.filter(log => log.exId === x.id).length;
+                    return `<button class="library-item ${x.id === selectedExercise ? 'active' : ''}" data-library-ex="${x.id}" aria-pressed="${x.id === selectedExercise}"><strong>${escape(x.name)}</strong><span class="small muted">${escape(x.part)} · ${plans} 天计划 · ${logs} 条记录</span></button>`;
+                }).join('') : '<div class="empty">没有匹配的动作，请调整搜索或部位筛选。</div>';
+                $('libraryList').querySelectorAll('[data-library-ex]').forEach(b => b.onclick = () => {
+                    selectedExercise = b.dataset.libraryEx; library();
+                    if (window.matchMedia('(max-width:760px)').matches) $('libraryDetail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+                libraryDetail();
+            }
+            function libraryDetail() {
+                const x = ex(selectedExercise), detail = $('libraryDetail');
+                if (!x) { detail.innerHTML = '<div class="empty">选择一个动作查看指南、计划与记录，或点击“新增动作”。</div>'; return; }
+                const days = [1, 2, 3, 4, 5, 6, 0].filter(day => ROUTINES[day].ids.includes(x.id));
+                const logs = data.logs.filter(log => log.exId === x.id).sort(byDate), availableDays = [1, 2, 3, 4, 5, 6, 0].filter(day => !days.includes(day));
+                detail.innerHTML = `<div class="panel-header"><div><h2 class="library-name">${escape(x.name)}</h2><p class="muted">${escape(x.part)}</p></div><div class="actions"><button class="btn" id="libraryEdit">编辑动作 / 指南</button><button class="btn primary" id="libraryLog">记录训练</button></div></div>
+                    <h3>动作指南</h3><div class="guide-text" id="libraryGuide">${x.guide ? escape(x.guide) : '<span class="muted">暂无动作指南，点击“编辑动作 / 指南”添加。</span>'}</div>
+                    <h3>备注说明</h3><div class="guide-text" id="libraryNote">${x.note ? escape(x.note) : '<span class="muted">暂无备注</span>'}</div>
+                    <div class="section-title"><h3>相关计划</h3><span class="small muted">${days.length} 个训练日</span></div>
+                    <div id="libraryPlans">${days.length ? days.map(day => `<button class="btn library-plan" data-library-day="${day}"><strong>${DAYS[day]} · ${escape(ROUTINES[day].title)}</strong><br><span class="small muted">${x.sets}组 × ${x.reps}${escape(x.unit)} · ${fmt(x.weight)} kg · 查看安排 →</span></button>`).join('') : '<p class="muted">此动作尚未加入每周计划。</p>'}</div>
+                    ${availableDays.length ? `<div class="actions" style="margin:16px 0 24px"><select class="btn" id="libraryAddDay" aria-label="选择加入计划的训练日">${availableDays.map(day => `<option value="${day}">${DAYS[day]}</option>`).join('')}</select><button class="btn subtle" id="libraryAddPlan">加入训练计划</button></div>` : '<p class="muted small">此动作已加入所有训练日。</p>'}
+                    <div class="section-title"><h3>训练记录</h3><span class="small muted" id="libraryLogCount">${logs.length} 条</span></div>
+                    <div class="table-wrap" id="libraryRecords">${logs.length ? `<table><thead><tr><th>日期</th><th>组 × 数量</th><th>重量</th><th>肘痛</th><th>备注</th></tr></thead><tbody>${logs.map(log => `<tr><td>${escape(log.date)}</td><td>${log.sets} × ${log.reps}${escape(log.unit || '次')}</td><td>${fmt(log.weight)} kg</td><td>${log.pain}/10</td><td style="white-space:pre-wrap;min-width:100px;max-width:240px;overflow-wrap:anywhere">${escape(log.note || '—')}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">此动作暂无训练记录。</div>'}</div>
+                    ${logs.length ? '<button class="link" id="libraryAllLogs" style="margin-top:14px">查看 / 编辑此动作的训练记录 →</button>' : ''}`;
+                $('libraryEdit').onclick = () => editExercise(x.id);
+                $('libraryLog').onclick = () => startLog(x.id);
+                detail.querySelectorAll('[data-library-day]').forEach(b => b.onclick = () => { selectedDay = Number(b.dataset.libraryDay); go('schedule'); });
+                if ($('libraryAllLogs')) $('libraryAllLogs').onclick = () => { $('filterEx').value = x.id; go('logs'); };
+                if ($('libraryAddPlan')) $('libraryAddPlan').onclick = () => {
+                    const day = Number($('libraryAddDay').value), r = ROUTINES[day];
+                    if (r.ids.includes(x.id)) return;
+                    r.ids.push(x.id); if (!save()) { r.ids.pop(); return; } library(); popup('已加入' + DAYS[day] + '训练计划');
+                };
+            }
+            $('librarySearch').oninput = library;
+            $('libraryPart').onchange = library;
+            $('libraryNew').onclick = () => editExercise();
             function populate() { const selections = ['logEx', 'filterEx', 'trendEx'].map(id => $(id).value); const option = EX.map(x => `<option value="${x.id}">${escape(x.name)}</option>`).join(''); $('logEx').innerHTML = option; $('filterEx').innerHTML = '<option value="">全部动作</option>' + option; $('trendEx').innerHTML = option;['logEx', 'filterEx', 'trendEx'].forEach((id, i) => { if ([...$(id).options].some(o => o.value === selections[i])) $(id).value = selections[i]; }) }
             function startLog(id) { editingLog = null; $('logFormTitle').textContent = '添加训练记录'; $('cancelEdit').style.display = 'none'; $('logForm').reset(); $('logDate').value = today(); $('logSets').value = 2; $('logReps').value = 10; $('logPain').value = 0; const e = EX.find(x => x.id === id) || EX[0]; $('logEx').value = e.id; fillLogTarget(e.id); go('logs') }
             function records() { const filter = $('filterEx').value; let a = [...data.logs].sort(byDate); if (filter) a = a.filter(x => x.exId === filter); $('logCount').textContent = `${a.length} 条`; $('allLogs').innerHTML = a.length ? `<table><thead><tr><th>日期</th><th>动作</th><th>组 × 数量</th><th>重量</th><th>肘痛</th><th>操作</th></tr></thead><tbody>${a.map(x => `<tr><td>${escape(x.date)}</td><td title="${escape(x.note)}">${escape(ex(x.exId)?.name || x.exId)}</td><td>${x.sets} × ${x.reps}${escape(x.unit || '次')}</td><td>${fmt(x.weight)} kg</td><td>${x.pain}/10</td><td><button class="link" data-edit-log="${x.id}">编辑</button><button class="link red" data-del-log="${x.id}">删除</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">没有符合条件的训练记录</div>'; document.querySelectorAll('[data-edit-log]').forEach(b => b.onclick = () => { const x = data.logs.find(z => z.id === b.dataset.editLog); if (!x) return; editingLog = x.id; $('logFormTitle').textContent = '编辑训练记录'; $('cancelEdit').style.display = 'inline-block'; $('logDate').value = x.date; $('logEx').value = x.exId; $('logSets').value = x.sets; $('logReps').value = x.reps; $('logRepsLabel').textContent = x.unit === '秒' ? '每组秒数' : '每组次数'; $('logWeight').value = x.weight; $('logPain').value = x.pain; $('logNote').value = x.note || ''; window.scrollTo({ top: 0, behavior: 'smooth' }) }); document.querySelectorAll('[data-del-log]').forEach(b => b.onclick = () => { if (!confirm('确定删除这条训练记录？')) return; data.logs = data.logs.filter(x => x.id !== b.dataset.delLog); save(); render(); popup('已删除') }) }
@@ -1071,7 +1152,7 @@
                     if (!x || typeof x.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(x.id) || ids.has(x.id)) throw Error('动作编号无效或重复');
                     ids.add(x.id);
                     if (!validCount(x.sets, 30) || !validCount(x.reps, 500) || !validWeight(x.weight) || !['次', '秒'].includes(x.unit)) throw Error('动作训练目标无效');
-                    return { id: x.id, name: textValue(x.name, 100, true), part: textValue(x.part, 100, true), note: textValue(x.note, 2000), sets: x.sets, reps: x.reps, weight: x.weight, unit: x.unit };
+                    return { id: x.id, name: textValue(x.name, 100, true), part: textValue(x.part, 100, true), note: textValue(x.note, 2000), guide: textValue(x.guide ?? '', 10000), sets: x.sets, reps: x.reps, weight: x.weight, unit: x.unit };
                 });
             }
             function validatePlan(raw) {
