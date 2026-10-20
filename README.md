@@ -1,14 +1,43 @@
-# 行为闭环 · PDCA
+# Self Manager · 个人工具主页
 
-Ubuntu 24 + XFCE 推荐从桌面终端运行：
+一个网页服务器，统一访问行为闭环（PDCA）、力量训练和投资回测。首页适配电脑与手机宽度，各工具均可返回个人主页。
+
+## 启动
+
+从桌面终端运行：
 
 ```sh
 cd /home/yzt/code/self-manager
-python3 serve.py
+./start.sh
 ```
 
-自动打开 <http://127.0.0.1:8765>。点击「发送测试提醒」验证桌面通知和提示音。
-服务仅监听本机，使用 Python 标准库和系统 `notify-send`，无需 Python 依赖。
+自动打开 <http://127.0.0.1:8765>。只启动一个进程、监听一个端口，无需分别启动回测服务。
+
+| 入口 | 地址 |
+| --- | --- |
+| 个人主页 | <http://127.0.0.1:8765/> |
+| 行为闭环 · PDCA | <http://127.0.0.1:8765/pdca/> |
+| 力量进阶 | <http://127.0.0.1:8765/strength/> |
+| 投资回测 | <http://127.0.0.1:8765/investment/> |
+
+`start.sh` 优先使用 `f-analysis/.venv` 中的 Python，支持从任意目录运行。首次安装回测依赖：
+
+```sh
+cd /home/yzt/code/self-manager/f-analysis
+uv sync --locked
+```
+
+启动参数透传给服务器：`./start.sh --no-browser` 不打开浏览器；`./start.sh --port 8877` 更换端口；`--data-file /path/to/pdca.json` 指定 PDCA 数据文件。也可用装好回测依赖的 Python 执行 `python3 serve.py`。缺少依赖时，首页、PDCA 和力量训练仍可使用，首页会提示回测未就绪。
+
+服务仅监听 `127.0.0.1`，用于本机访问。原 `/pdca_focus.html` 和 `/strength_training_tracker.html` 地址仍可使用。保持相同浏览器、域名和端口，力量训练会继续读取原有浏览器数据；若以前直接打开 HTML 或用其他端口，请先在原地址导出完整备份，再在新入口导入。
+
+力量训练记录仍保存在浏览器；PDCA 文件仍为 `data/pdca.json`；回测沿用 `f-analysis` 内的缓存、配置和 `outputs/` 结果。不要清除浏览器数据后才备份训练记录。原回测独立启动命令仍可使用，但日常只需启动根目录的 `start.sh`。
+
+验证统一入口、回测任务和下载：`f-analysis/.venv/bin/python -m unittest -v test_portal.py`。
+
+## PDCA 提醒与使用
+
+进入 PDCA 后点击「发送测试提醒」验证桌面通知和提示音。PDCA 使用 Python 标准库和系统 `notify-send`，无需额外 Python 依赖。
 如缺少通知组件：`sudo apt install libnotify-bin xfce4-notifyd`。
 
 计时开始、延期和结束时会同步系统提醒。只要终端中的服务仍在运行，标签页在后台甚至关闭后也会发送已安排的提醒。提示音和复盘层仍需要页面运行；系统挂起期间不能提醒，恢复后发送逾期提醒。Ctrl+C 停止服务。服务重启后会从本机数据文件恢复已保存的计时提醒；页面刷新后恢复计时界面。

@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""Local-only PDCA page and XFCE notification scheduler (standard library)."""
+"""个人工具主页、本地数据服务与桌面提醒。"""
 
 import argparse
 import copy
@@ -10,12 +9,14 @@ import os
 import secrets
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlsplit
 
 PAGE = Path(__file__).with_name("pdca_focus.html")
 
@@ -351,13 +352,46 @@ class Scheduler:
             self._phase_event(event)
 
 
-def create_server(port, scheduler=None, data_path=None):
+def load_investment():
+    """Reuse the backtest application and HTTP routes in this server process."""
+    project = PAGE.parent / "f-analysis"
+    sys.path.insert(0, str(project))
+    from f_analysis.web_service import WebApplication
+    from scripts.web import Handler
+
+    return WebApplication(project_root=project), Handler
+
+
+def create_server(port, scheduler=None, data_path=None, investment=None):
     scheduler = scheduler or Scheduler()
     store = DataStore(data_path or PAGE.parent / "data" / "pdca.json")
     token = secrets.token_urlsafe(32)
     origin = f"http://127.0.0.1:{port}"
 
-    class Handler(BaseHTTPRequestHandler):
+    investment_app, investment_handler = investment or (None, BaseHTTPRequestHandler)
+
+    class Handler(investment_handler):
+        def __init__(self, *args, **kwargs):
+            self.app = investment_app
+            BaseHTTPRequestHandler.__init__(self, *args, **kwargs)
+
+        def investment_request(self, method):
+            if investment_app is None:
+                return self.reply(
+                    503,
+                    '<!doctype html><html lang="zh-CN"><meta charset="utf-8">'
+                    "<title>回测服务未就绪</title><h1>回测服务未就绪</h1>"
+                    "<p>请在项目目录运行 ./start.sh；首次使用请先在 f-analysis 目录执行 uv sync。"
+                    '若仍不可用，请查看启动终端中的错误信息。</p><a href="/">返回首页</a></html>'.encode(),
+                    "text/html; charset=utf-8",
+                )
+            original = self.path
+            self.path = self.path.removeprefix("/investment")
+            try:
+                return getattr(investment_handler, method)(self)
+            finally:
+                self.path = original
+
         def reply(self, status, value, content_type="application/json; charset=utf-8"):
             data = (
                 value
@@ -369,8 +403,11 @@ def create_server(port, scheduler=None, data_path=None):
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
-            self.end_headers()
-            self.wfile.write(data)
+            try:
+                self.end_headers()
+                self.wfile.write(data)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # The browser may leave the tool before a response finishes.
 
         def allowed(self):
             return self.headers.get("Host") == origin.removeprefix("http://")
@@ -381,7 +418,30 @@ def create_server(port, scheduler=None, data_path=None):
         def do_GET(self):
             if not self.allowed():
                 return self.reply(403, {"error": "Invalid host"})
-            if self.path in ("/", "/pdca_focus.html"):
+            path = urlsplit(self.path).path
+            if path in ("/pdca", "/strength", "/investment"):
+                self.send_response(302)
+                self.send_header("Location", path + "/")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            if path.startswith("/investment/"):
+                return self.investment_request("do_GET")
+            if path in ("/", "/index.html"):
+                return self.reply(
+                    200,
+                    PAGE.with_name("index.html").read_bytes(),
+                    "text/html; charset=utf-8",
+                )
+            if path == "/api/tools":
+                return self.reply(200, {"investment": investment_app is not None})
+            if path in ("/strength/", "/strength_training_tracker.html"):
+                return self.reply(
+                    200,
+                    PAGE.with_name("strength_training_tracker.html").read_bytes(),
+                    "text/html; charset=utf-8",
+                )
+            if path in ("/pdca/", "/pdca_focus.html"):
                 page = PAGE.read_text().replace(
                     "<script>",
                     "<script>window.PDCA_NATIVE_TOKEN="
@@ -409,6 +469,8 @@ def create_server(port, scheduler=None, data_path=None):
             self.reply(404, {"error": "Not found"})
 
         def do_POST(self):
+            if urlsplit(self.path).path.startswith("/investment/"):
+                return self.investment_request("do_POST")
             if (
                 not self.allowed()
                 or self.headers.get("Origin") != origin
@@ -448,6 +510,7 @@ def create_server(port, scheduler=None, data_path=None):
                 self.reply(400, {"error": str(exc)})
 
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    origin = f"http://127.0.0.1:{server.server_port}"
     server.data_store = store
     # Restore reminders from disk, including when no browser is open after restart.
     try:
@@ -487,7 +550,24 @@ def main():
         "--data-file", type=Path, default=PAGE.parent / "data" / "pdca.json"
     )
     args = parser.parse_args()
-    server, scheduler = create_server(args.port, data_path=args.data_file)
+    if not 1 <= args.port <= 65535:
+        parser.error("端口必须在 1～65535 之间")
+    investment = None
+    try:
+        investment = load_investment()
+    except ImportError as exc:
+        print(
+            f"回测服务未加载：{exc}。请使用 ./start.sh；首次使用先在 f-analysis 目录运行 uv sync。",
+            flush=True,
+        )
+    try:
+        server, scheduler = create_server(
+            args.port, data_path=args.data_file, investment=investment
+        )
+    except OSError as exc:
+        if investment:
+            investment[0].close()
+        parser.error(f"服务无法启动：{exc}；可使用 --port 更换端口")
     stopped = threading.Event()
 
     def worker():
@@ -497,7 +577,7 @@ def main():
     threading.Thread(target=worker, daemon=True).start()
     url = f"http://127.0.0.1:{args.port}"
     print(
-        f"行为闭环：{url}\n数据文件：{server.data_store.path.resolve()}\n请保持此进程运行；Ctrl+C 退出。",
+        f"个人主页：{url}\n工具入口：/pdca/ · /strength/ · /investment/\n数据文件：{server.data_store.path.resolve()}\n请保持此进程运行；Ctrl+C 退出。",
         flush=True,
     )
     if not args.no_browser:
@@ -509,6 +589,8 @@ def main():
     finally:
         stopped.set()
         server.server_close()
+        if investment:
+            investment[0].close()
 
 
 if __name__ == "__main__":

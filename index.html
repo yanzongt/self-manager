@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f6f5f0">
+<title>个人主页 · Self Manager</title>
+<style>
+:root{color-scheme:light;--ink:#243c34;--muted:#737b73;--line:#dedfd5;--paper:#f6f5f0}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}a{color:inherit}header,main,footer{width:min(1120px,calc(100% - 64px));margin:auto}header{height:106px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:12px;font-size:17px;font-weight:650;letter-spacing:-.4px}.mark{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--ink);color:#fafbf3;font-family:Georgia,serif;font-size:24px;font-weight:400}.date{font-size:13px;color:var(--muted)}.intro{padding:70px 0 46px;display:flex;justify-content:space-between;gap:30px;align-items:flex-end}.eyebrow{font-size:11px;font-weight:650;letter-spacing:2.4px;color:#6e7d69;margin:0 0 17px}h1{font-size:clamp(32px,4vw,48px);line-height:1.3;letter-spacing:-1.5px;font-weight:550;margin:0 0 18px}.intro p:last-child{color:var(--muted);margin:0}.daily{font:italic 21px/1.7 Georgia,serif;color:#8a927c;white-space:nowrap;padding-bottom:3px}.section-label{display:flex;align-items:center;gap:12px;font-size:12px;letter-spacing:1px;margin:22px 0 19px}.section-label::after{content:"";height:1px;background:var(--line);flex:1}.count{color:#969b91;font-size:11px}.tools{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.tool{position:relative;display:flex;flex-direction:column;text-decoration:none;background:#fffefa;border:1px solid var(--line);border-radius:16px;padding:27px;min-height:365px;transition:transform .2s,border-color .2s,box-shadow .2s;overflow:hidden}.tool:hover{transform:translateY(-5px);border-color:#95a38a;box-shadow:0 12px 32px #243c340c}.tool:focus-visible{outline:3px solid #416d54;outline-offset:5px}.card-top{display:flex;align-items:center;justify-content:space-between}.icon{width:48px;height:48px;display:grid;place-items:center;border-radius:13px;background:var(--tint);color:var(--accent)}.icon svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.number{font:13px Georgia,serif;color:#a4aa9c}.english{color:var(--accent);font-size:10px;letter-spacing:1.6px;margin:28px 0 4px}h2{font-size:24px;font-weight:550;margin:0 0 12px;letter-spacing:-.6px}.description{color:var(--muted);font-size:13px;margin:0 0 28px;line-height:1.9}.card-bottom{display:flex;justify-content:space-between;align-items:center;border-top:1px solid #e9e9e1;padding-top:18px;margin-top:auto}.tags{font-size:11px;color:#808876}.arrow{width:30px;height:30px;border-radius:50%;background:var(--tint);display:grid;place-items:center;color:var(--accent);font-size:18px}.note{display:flex;gap:13px;align-items:flex-start;border:1px solid var(--line);border-radius:12px;padding:19px 23px;margin:28px 0 65px;font-size:12px;color:var(--muted)}.dot{flex-shrink:0;width:7px;height:7px;border-radius:50%;background:#64815b;display:inline-block;margin-top:7px}.note p{margin:0}.note strong{color:#56634e;font-weight:550}#service-status{display:block;font-size:11px;margin-top:5px}footer{display:flex;justify-content:space-between;border-top:1px solid var(--line);padding:23px 0 30px;color:#939a8c;font-size:11px}.footer-name{letter-spacing:1.5px}@media(prefers-reduced-motion:reduce){.tool{transition:none}}@media(max-width:850px){.tools{gap:13px}.tool{padding:22px}.daily{display:none}}@media(max-width:660px){header,main,footer{width:calc(100% - 36px)}header{height:80px}.brand{font-size:15px}.date{font-size:11px}.intro{padding:40px 0 24px}.tools{grid-template-columns:1fr}.tool{min-height:280px;padding:24px}.english{margin-top:19px}.description{margin-bottom:20px}.note{margin-bottom:40px}footer{gap:20px;flex-wrap:wrap}}
+</style>
+</head>
+<body>
+<header><div class="brand"><span class="mark" aria-hidden="true">s</span>Self Manager<span style="font-weight:400;color:#a3aa9b"> / </span>个人主页</div><time class="date" id="date"></time></header>
+<main>
+<section class="intro"><div><p class="eyebrow">A LITTLE BETTER, EVERY DAY</p><h1>把时间，留给重要的事。</h1><p>专注当下，持续训练，理性投资。这里是你的个人工具空间。</p></div><div class="daily" aria-hidden="true">Small steps.<br>Lasting progress.</div></section>
+<div class="section-label">我的工具 <span class="count">03</span></div>
+<nav class="tools" aria-label="个人工具">
+<a class="tool" href="/pdca/" style="--accent:#567452;--tint:#eaf0e4">
+<div class="card-top"><span class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 1-5-7M20 3l-8 9-3-3"/><path d="M20 7V3h-4"/></svg></span><span class="number">01</span></div>
+<p class="english">PLAN · DO · CHECK · ACT</p><h2>行为闭环</h2><p class="description">从一个明确的目的开始。安排事项、开启专注计时，用每一次复盘让行动更进一步。</p>
+<div class="card-bottom"><span class="tags">四象限 · 番茄钟 · 工作复盘</span><span class="arrow" aria-hidden="true">↗</span></div></a>
+<a class="tool" href="/strength/" style="--accent:#a1754c;--tint:#f6eddf">
+<div class="card-top"><span class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M3 8l5-5M16 21l5-5M3 4l1-1M20 21l1-1M4 10l6-6M14 20l6-6"/></svg></span><span class="number">02</span></div>
+<p class="english">BUILD STRENGTH, STAY CONSISTENT</p><h2>力量进阶</h2><p class="description">让每一次训练都有迹可循。制定训练日程、记录重量与次数，看见身体的点滴变化。</p>
+<div class="card-bottom"><span class="tags">训练计划 · 动作仓库 · 身体数据</span><span class="arrow" aria-hidden="true">↗</span></div></a>
+<a class="tool" href="/investment/" style="--accent:#617b91;--tint:#e8eef2">
+<div class="card-top"><span class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3v17h17M7 14l4-5 4 3 5-7M16 5h4v4"/></svg></span><span class="number">03</span></div>
+<p class="english">RESEARCH BEFORE YOU INVEST</p><h2>投资回测</h2><p class="description">用数据检验投资想法。配置股票池、对比交易策略，在历史行情中观察收益与风险。</p>
+<div class="card-bottom"><span class="tags">策略回测 · 组合分析 · 行情缓存</span><span class="arrow" aria-hidden="true">↗</span></div></a>
+</nav>
+<aside class="note"><span class="dot" aria-hidden="true"></span><div><p><strong>你的工具，运行在本机。</strong> PDCA 数据保存在本机文件，训练记录保存在当前浏览器，回测结果保存在项目目录。请定期备份。</p><span id="service-status" role="status">正在检查回测服务…</span></div></aside>
+</main>
+<footer><span class="footer-name">SELF MANAGER / 个人工具空间</span><span>行动有方向，成长有记录。</span></footer>
+<script>
+const date = new Date();
+document.querySelector('#date').dateTime = date.toISOString();
+document.querySelector('#date').textContent = new Intl.DateTimeFormat('zh-CN', {month:'long',day:'numeric',weekday:'long'}).format(date);
+fetch('/api/tools').then(response => {if (!response.ok) throw new Error(); return response.json()}).then(data => {
+ document.querySelector('#service-status').textContent = data.investment ? '三个工具已就绪 · 一个服务，统一访问' : '回测服务未加载，请使用 ./start.sh 启动；详情见启动终端。';
+}).catch(() => {document.querySelector('#service-status').textContent = '无法读取服务状态，请检查本地服务是否仍在运行。'});
+</script>
+</body>
+</html>

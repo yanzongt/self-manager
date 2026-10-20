@@ -1,0 +1,234 @@
+"""本机网页：真实 HTTP 路由、后台引擎、历史读取和文件导出。"""
+
+from contextlib import closing
+import io
+import json
+from pathlib import Path
+import sqlite3
+import tempfile
+from threading import Thread
+import time
+import unittest
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+import zipfile
+
+import pandas as pd
+
+from f_analysis import BacktestConfig, BacktestEngine, BuyAndHold, StockPool
+from f_analysis.web_service import WebApplication, normalize_request, write_json
+from scripts import market_data
+from scripts.web import make_server
+
+
+def request_data():
+    return {
+        "pool": [
+            {"ticker": "A", "name": "资产甲", "weight": 0.6},
+            {"ticker": "B", "name": "资产乙", "weight": 0.2},
+        ],
+        "strategies": ["buy_hold", "ma_band", "fixed_weight"],
+        "initial_cash": 1000,
+        "ma_window": 3,
+        "threshold": 0.05,
+        "period": "5y",
+        "data_mode": "offline",
+    }
+
+
+def prices(tickers, **kwargs):
+    return pd.DataFrame(
+        {
+            ticker: [100.0, 80.0, 70.0, 95.0, 110.0, 120.0, 90.0, 100.0]
+            for ticker in tickers
+        },
+        index=pd.bdate_range("2024-01-01", periods=8),
+    )
+
+
+class WebTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.app = WebApplication(
+            self.root, price_loader=prices, cache_path=self.root / "cache.sqlite3"
+        )
+        self.server = make_server(self.app, port=0)
+        self.thread = Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.url = f"http://127.0.0.1:{self.server.server_port}"
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
+        self.app.close()
+        self.temp.cleanup()
+
+    def http(self, path, payload=None, headers=None):
+        combined = {"Content-Type": "application/json", "X-Local-Token": self.app.token}
+        combined.update(headers or {})
+        data = json.dumps(payload).encode() if payload is not None else None
+        request = Request(self.url + path, data=data, headers=combined)
+        try:
+            response = urlopen(request, timeout=10)
+        except HTTPError as exc:
+            response = exc
+        with closing(response):
+            return response.status, response.headers, response.read()
+
+    def complete_run(self):
+        status, _, body = self.http("/api/runs", request_data())
+        self.assertEqual(status, 202)
+        run_id = json.loads(body)["id"]
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            state = self.app.job_status(run_id)
+            if state["state"] not in ("queued", "running"):
+                self.assertEqual(state["state"], "succeeded", state)
+                return run_id
+            time.sleep(0.02)
+        self.fail("后台回测没有在预期时间内完成")
+
+    def test_page_static_assets_and_connection_config(self):
+        status, headers, body = self.http("/")
+        self.assertEqual(status, 200)
+        self.assertIn("策略回测".encode(), body)
+        self.assertIn("Content-Security-Policy", headers)
+        self.assertEqual(headers["Cache-Control"], "no-store")
+        for asset in ["/app.js", "/styles.css"]:
+            self.assertEqual(self.http(asset)[0], 200)
+        status, _, body = self.http("/api/config")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["token"], self.app.token)
+
+    def test_background_run_uses_real_engine_and_exports_all_results(self):
+        run_id = self.complete_run()
+        status, _, body = self.http(f"/api/runs/{run_id}")
+        self.assertEqual(status, 200)
+        detail = json.loads(body)
+        self.assertEqual(
+            set(detail["results"]), {"buy_hold", "ma_band", "fixed_weight"}
+        )
+        self.assertEqual(len(detail["results"]["buy_hold"]["curve"]), 8)
+        expected = BacktestEngine(
+            StockPool({"A": "资产甲", "B": "资产乙"}), BacktestConfig(1000)
+        ).run(prices(["A", "B"]), BuyAndHold({"A": 0.6, "B": 0.2}))
+        self.assertEqual(
+            detail["results"]["buy_hold"]["summary"]["final_equity"],
+            expected.summary["final_equity"],
+        )
+        self.assertEqual(len(detail["results"]["buy_hold"]["tables"]["positions"]), 2)
+        self.assertEqual(len(detail["comparison"]), 3)
+        self.assertEqual(self.app.list_runs()["items"][0]["state"], "succeeded")
+        status, headers, body = self.http(f"/api/runs/{run_id}/download.zip")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Content-Type"], "application/zip")
+        with zipfile.ZipFile(io.BytesIO(body)) as archive:
+            self.assertIn("buy_hold/fills.csv", archive.namelist())
+            self.assertIn("comparison.csv", archive.namelist())
+            self.assertIn("analysis/monthly_correlation.csv", archive.namelist())
+        self.assertEqual(
+            self.http(f"/api/runs/{run_id}/files/ma_band/trades.csv")[0], 200
+        )
+
+    def test_invalid_payload_and_cross_site_requests_cannot_start_jobs(self):
+        self.assertEqual(
+            self.http("/api/runs", request_data(), {"X-Local-Token": "wrong"})[0], 403
+        )
+        self.assertEqual(
+            self.http("/api/runs", request_data(), {"Origin": "https://example.com"})[
+                0
+            ],
+            403,
+        )
+        self.assertEqual(
+            self.http("/api/config", headers={"Host": "example.com"})[0], 403
+        )
+        invalid = request_data()
+        invalid["pool"][0]["weight"] = 1.5
+        self.assertEqual(self.http("/api/runs", invalid)[0], 400)
+        self.assertEqual(self.app.jobs, {})
+        for update in [
+            {"pool": []},
+            {"strategies": []},
+            {"strategies": ["unknown"]},
+            {"ma_window": 1.5},
+            {"period": "bad"},
+            {"initial_cash": float("inf")},
+        ]:
+            with self.subTest(update=update), self.assertRaises(ValueError):
+                normalize_request({**request_data(), **update})
+
+    def test_failure_is_persisted_without_fake_results(self):
+        def failing(*args, **kwargs):
+            raise RuntimeError("缓存缺少股票：A")
+
+        self.app.price_loader = failing
+        run_id = self.app.submit(request_data())["id"]
+        deadline = time.monotonic() + 5
+        while (
+            self.app.job_status(run_id)["state"] in ("queued", "running")
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.02)
+        self.assertEqual(self.app.job_status(run_id)["state"], "failed")
+        self.assertIn("缓存缺少", self.app.job_status(run_id)["message"])
+        self.assertEqual(self.app.list_runs()["items"][0]["state"], "failed")
+        self.assertEqual(self.http(f"/api/runs/{run_id}")[0], 404)
+
+    def test_restart_marks_unfinished_job_as_interrupted(self):
+        path = self.root / "outputs/web_backtest/unfinished"
+        path.mkdir(parents=True)
+        write_json(
+            path / "status.json", {"id": "web_backtest__unfinished", "state": "running"}
+        )
+        self.assertEqual(
+            self.app.job_status("web_backtest__unfinished")["state"], "interrupted"
+        )
+
+    def test_download_paths_and_symlinks_are_restricted(self):
+        run_id = self.complete_run()
+        path = self.app.run_path(run_id)
+        secret = self.root / "private.json"
+        secret.write_text('{"secret": true}')
+        (path / "ma_band/summary.json").unlink()
+        (path / "ma_band/summary.json").symlink_to(secret)
+        for filename in ["../../private.json", "ma_band/summary.json", "private.json"]:
+            with self.subTest(filename=filename), self.assertRaises(FileNotFoundError):
+                self.app.result_file(run_id, filename)
+        self.assertEqual(
+            self.http("/api/runs/web_backtest__../files/private.json")[0], 404
+        )
+        with zipfile.ZipFile(io.BytesIO(self.app.zip_results(run_id))) as archive:
+            self.assertNotIn("ma_band/summary.json", archive.namelist())
+        status, _, body = self.http(f"/api/runs/{run_id}")
+        self.assertEqual(status, 200)
+        self.assertNotIn('"secret"', body.decode())
+        (path / "run_config.json").unlink()
+        (path / "run_config.json").symlink_to(secret)
+        self.assertEqual(self.http(f"/api/runs/{run_id}")[0], 404)
+
+    def test_cache_listing_is_read_only_and_handles_missing_cache(self):
+        self.assertEqual(self.app.cache_info(), {"items": []})
+        self.assertFalse(self.app.cache_path.exists())
+        with sqlite3.connect(self.app.cache_path) as db:
+            market_data._initialize(db)
+            db.execute(
+                "INSERT INTO metadata VALUES (?,?,?,?,?,?,?,?)",
+                (
+                    market_data.DATASET,
+                    "A",
+                    "2024-01-03T00:00:00+00:00",
+                    "2024-01-01",
+                    "2024-01-03",
+                    3,
+                    "test",
+                    1,
+                ),
+            )
+        self.assertEqual(self.app.cache_info()["items"][0]["ticker"], "A")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,13 +1,13 @@
 import json
-import threading
 import tempfile
+import threading
+import unittest
 from pathlib import Path
 from unittest.mock import patch
-import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from serve import Scheduler, create_server, DataStore, DataConflict
+from serve import DataConflict, DataStore, Scheduler, create_server
 
 
 class SchedulerTests(unittest.TestCase):
@@ -168,7 +168,13 @@ class DataStoreTests(unittest.TestCase):
         self.addCleanup(self.folder.cleanup)
         self.path = Path(self.folder.name) / "data" / "pdca.json"
         self.store = DataStore(self.path)
-        self.data = {"tags": ["工作"], "records": [], "active": None, "workItems": [], "pomodoro": None}
+        self.data = {
+            "tags": ["工作"],
+            "records": [],
+            "active": None,
+            "workItems": [],
+            "pomodoro": None,
+        }
 
     def test_save_backup_restart_and_idempotent_retry(self):
         self.assertEqual(self.store.read(), {"data": None, "revision": None})
@@ -185,7 +191,14 @@ class DataStoreTests(unittest.TestCase):
         self.assertEqual(self.store.read()["data"], changed)
 
     def test_corrupt_and_invalid_data_are_never_overwritten(self):
-        for value in [{}, {**self.data, "records": [None]}, {**self.data, "active": {"id": "s", "purpose": "x", "tag": "工作", "startedAt": 0}}]:
+        for value in [
+            {},
+            {**self.data, "records": [None]},
+            {
+                **self.data,
+                "active": {"id": "s", "purpose": "x", "tag": "工作", "startedAt": 0},
+            },
+        ]:
             with self.assertRaises(ValueError):
                 self.store.write(value, None)
         self.assertFalse(self.path.exists())
@@ -201,28 +214,37 @@ class DataStoreTests(unittest.TestCase):
         revision = self.store.write(self.data, None)["revision"]
         original = self.path.read_bytes()
         original_replace = __import__("os").replace
+
         def fail_main(source, destination):
             if Path(destination) == self.path:
                 raise OSError("disk unavailable")
             original_replace(source, destination)
+
         with patch("serve.os.replace", side_effect=fail_main):
             with self.assertRaises(OSError):
                 self.store.write({**self.data, "tags": ["新项目"]}, revision)
         self.assertEqual(self.path.read_bytes(), original)
-        self.assertEqual(sorted(p.name for p in self.path.parent.iterdir()), ["pdca.json", "pdca.json.bak"])
+        self.assertEqual(
+            sorted(p.name for p in self.path.parent.iterdir()),
+            ["pdca.json", "pdca.json.bak"],
+        )
 
     def test_concurrent_writers_have_one_winner(self):
         revision = self.store.write(self.data, None)["revision"]
         outcomes = []
+
         def write(tag):
             try:
                 self.store.write({**self.data, "tags": [tag]}, revision)
                 outcomes.append("saved")
             except DataConflict:
                 outcomes.append("conflict")
+
         threads = [threading.Thread(target=write, args=(str(i),)) for i in range(2)]
-        for t in threads: t.start()
-        for t in threads: t.join()
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
         self.assertCountEqual(outcomes, ["saved", "conflict"])
 
 
@@ -237,7 +259,9 @@ class HTTPTests(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
         self.path = Path(self.folder.name) / "pdca.json"
-        self.server, self.scheduler = create_server(port, Scheduler(lambda *args: None), self.path)
+        self.server, self.scheduler = create_server(
+            port, Scheduler(lambda *args: None), self.path
+        )
         self.url = f"http://127.0.0.1:{port}"
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -247,10 +271,19 @@ class HTTPTests(unittest.TestCase):
         self.server.server_close()
         self.thread.join()
 
+    def test_home_and_unavailable_investment(self):
+        with urlopen(self.url) as response:
+            self.assertIn("我的工具".encode(), response.read())
+        with urlopen(self.url + "/api/tools") as response:
+            self.assertFalse(json.load(response)["investment"])
+        with self.assertRaises(HTTPError) as unavailable:
+            urlopen(self.url + "/investment/")
+        self.assertEqual(unavailable.exception.code, 503)
+
     def test_page_and_authenticated_schedule(self):
         import re
 
-        with urlopen(self.url) as response:
+        with urlopen(self.url + "/pdca/") as response:
             page = response.read().decode()
         token = json.loads(re.search(r'window.PDCA_NATIVE_TOKEN=("[^"]+")', page)[1])
         headers = {
@@ -278,7 +311,7 @@ class HTTPTests(unittest.TestCase):
     def test_authenticated_independent_timer_and_cancellation(self):
         import re
 
-        with urlopen(self.url) as response:
+        with urlopen(self.url + "/pdca/") as response:
             page = response.read().decode()
         token = json.loads(re.search(r'window.PDCA_NATIVE_TOKEN=("[^"]+")', page)[1])
         headers = {
@@ -300,15 +333,32 @@ class HTTPTests(unittest.TestCase):
 
     def test_data_api_persistence_conflict_and_authentication(self):
         import re
-        with urlopen(self.url) as response:
-            token = json.loads(re.search(r'window.PDCA_NATIVE_TOKEN=("[^"]+")', response.read().decode())[1])
-        headers = {"Origin": self.url, "X-PDCA-Token": token, "Content-Type": "application/json"}
+
+        with urlopen(self.url + "/pdca/") as response:
+            token = json.loads(
+                re.search(
+                    r'window.PDCA_NATIVE_TOKEN=("[^"]+")', response.read().decode()
+                )[1]
+            )
+        headers = {
+            "Origin": self.url,
+            "X-PDCA-Token": token,
+            "Content-Type": "application/json",
+        }
         with self.assertRaises(HTTPError) as denied:
             urlopen(self.url + "/api/data")
         self.assertEqual(denied.exception.code, 403)
         data = {"tags": ["工作"], "records": [], "active": None, "pomodoro": None}
+
         def post(data, revision):
-            return urlopen(Request(self.url + "/api/data", json.dumps({"data": data, "revision": revision}).encode(), headers))
+            return urlopen(
+                Request(
+                    self.url + "/api/data",
+                    json.dumps({"data": data, "revision": revision}).encode(),
+                    headers,
+                )
+            )
+
         with post(data, None) as response:
             revision = json.load(response)["revision"]
         with urlopen(Request(self.url + "/api/data", headers=headers)) as response:
@@ -317,19 +367,32 @@ class HTTPTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as stale:
             post(changed, None)
         self.assertEqual(stale.exception.code, 409)
-        with post(changed, revision): pass
+        with post(changed, revision):
+            pass
         self.assertEqual(DataStore(self.path).read()["data"], changed)
         self.assertTrue(self.path.with_suffix(".json.bak").exists())
 
     def test_restart_restores_reminders_from_file(self):
-        active = dict(id="session", purpose="工作", tag="工作", startedAt=0, budgetMinutes=10, extraMinutes=0)
+        active = dict(
+            id="session",
+            purpose="工作",
+            tag="工作",
+            startedAt=0,
+            budgetMinutes=10,
+            extraMinutes=0,
+        )
         timer = {"id": "timer", **SchedulerTests().pomo_item()["pomodoro"]}
-        self.server.data_store.write({"tags": ["工作"], "records": [], "active": active, "pomodoro": timer}, None)
+        self.server.data_store.write(
+            {"tags": ["工作"], "records": [], "active": active, "pomodoro": timer}, None
+        )
         import socket
+
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
-        restarted, scheduler = create_server(port, Scheduler(lambda *args: None), self.path)
+        restarted, scheduler = create_server(
+            port, Scheduler(lambda *args: None), self.path
+        )
         self.addCleanup(restarted.server_close)
         self.assertEqual(scheduler.pending["deadline"], 600000)
         self.assertEqual(scheduler.pending_pomodoro["id"], "timer")

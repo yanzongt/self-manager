@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#172c35" />
+    <meta name="description" content="本机股票池与策略回测工作台" />
+    <title>F·Analysis — 策略回测工作台</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <svg class="symbols" aria-hidden="true">
+      <defs>
+        <symbol id="i-grid" viewBox="0 0 24 24">
+          <rect x="3" y="3" width="7" height="7" rx="1.5" />
+          <rect x="14" y="3" width="7" height="7" rx="1.5" />
+          <rect x="3" y="14" width="7" height="7" rx="1.5" />
+          <rect x="14" y="14" width="7" height="7" rx="1.5" />
+        </symbol>
+        <symbol id="i-chart" viewBox="0 0 24 24">
+          <path d="M4 4v16h16M7 14l4-5 4 3 5-7" />
+        </symbol>
+        <symbol id="i-clock" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 2" />
+        </symbol>
+        <symbol id="i-data" viewBox="0 0 24 24">
+          <ellipse cx="12" cy="5" rx="8" ry="3" />
+          <path d="M4 5v7c0 4 16 4 16 0V5M4 12v7c0 4 16 4 16 0v-7" />
+        </symbol>
+        <symbol id="i-arrow" viewBox="0 0 24 24">
+          <path d="M4 12h16m-6-6 6 6-6 6" />
+        </symbol>
+        <symbol id="i-play" viewBox="0 0 24 24">
+          <path d="m8 5 11 7-11 7Z" />
+        </symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24">
+          <path d="M12 5v14M5 12h14" />
+        </symbol>
+        <symbol id="i-close" viewBox="0 0 24 24">
+          <path d="m6 6 12 12M6 18 18 6" />
+        </symbol>
+        <symbol id="i-download" viewBox="0 0 24 24">
+          <path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4" />
+        </symbol>
+        <symbol id="i-info" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v6M12 7v1" />
+        </symbol>
+        <symbol id="i-refresh" viewBox="0 0 24 24">
+          <path
+            d="M20 7v5h-5M4 17v-5h5M5 8a8 8 0 0 1 13-3l2 3M4 16l2 3a8 8 0 0 0 13-3"
+          />
+        </symbol>
+        <symbol id="i-chevron" viewBox="0 0 24 24">
+          <path d="m9 5 7 7-7 7" />
+        </symbol>
+        <symbol id="i-check" viewBox="0 0 24 24">
+          <path d="m5 12 4 4L19 6" />
+        </symbol>
+        <symbol id="i-pool" viewBox="0 0 24 24">
+          <path d="M4 19V9h4v10m2 0V4h4v15m2 0v-7h4v7M2 20h20" />
+        </symbol>
+      </defs>
+    </svg>
+    <aside class="rail">
+      <a class="brand" href="#workspace" aria-label="F Analysis 工作台"
+        >f<span>·</span></a
+      >
+      <div class="rail-line"></div>
+      <nav aria-label="主导航">
+        <a href="/" class="rail-item" aria-label="返回个人主页" style="text-decoration:none"><span aria-hidden="true">⌂</span><span>主页</span></a>
+        <button
+          class="rail-item active"
+          data-view="workspace"
+          aria-label="策略回测"
+        >
+          <svg><use href="#i-chart" /></svg><span>回测</span>
+        </button>
+        <button class="rail-item" data-view="history" aria-label="历史记录">
+          <svg><use href="#i-clock" /></svg><span>记录</span>
+        </button>
+        <button class="rail-item" data-view="cache" aria-label="行情缓存">
+          <svg><use href="#i-data" /></svg><span>行情</span>
+        </button>
+      </nav>
+      <button
+        id="help-button"
+        class="rail-item rail-help"
+        aria-label="使用说明"
+      >
+        <svg><use href="#i-info" /></svg><span>说明</span>
+      </button>
+      <span class="rail-version">V 1.0</span>
+    </aside>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="wordmark">
+          F·Analysis <span>/</span>
+          <span class="topbar-label">投资研究工作台</span>
+        </div>
+        <div class="connection" id="connection">
+          <span class="status-dot"></span
+          ><span id="connection-text">连接本机服务…</span>
+        </div>
+      </header>
+      <main>
+        <section class="page-heading">
+          <div>
+            <p class="eyebrow">
+              RESEARCH WORKSPACE <span>/</span> <span id="page-number">01</span>
+            </p>
+            <h1 id="page-title">策略回测</h1>
+            <p id="page-subtitle">从一个想法开始，让数据回答。</p>
+          </div>
+          <div class="heading-actions">
+            <span class="privacy-note"
+              ><span class="tiny-dot"></span>本机数据 · 本机计算</span
+            ><button id="new-run" class="button secondary">
+              <svg><use href="#i-plus" /></svg>新建回测
+            </button>
+          </div>
+        </section>
+        <div id="global-error" class="error-banner" role="alert" hidden></div>
+        <section id="workspace-view" class="view">
+          <div class="workspace-grid">
+            <aside class="config-panel panel">
+              <div class="panel-heading">
+                <div>
+                  <span class="section-kicker">CONFIGURATION</span>
+                  <h2>回测配置</h2>
+                </div>
+                <span class="mini-tag">草稿</span>
+              </div>
+              <form id="backtest-form">
+                <section class="config-section">
+                  <div class="section-title">
+                    <h3><span class="step-number">01</span>股票池</h3>
+                    <button
+                      type="button"
+                      class="text-button"
+                      id="equal-weights"
+                    >
+                      等权分配
+                    </button>
+                  </div>
+                  <div class="pool-labels">
+                    <span>股票 / Yahoo 代码</span><span>权重</span>
+                  </div>
+                  <div id="pool-rows"></div>
+                  <button type="button" class="add-stock" id="add-stock">
+                    <svg><use href="#i-plus" /></svg>添加股票
+                  </button>
+                  <div class="pool-footer">
+                    <span id="pool-count">0 只股票</span
+                    ><span>剩余现金 <b id="cash-weight">0%</b></span>
+                  </div>
+                  <div class="preset-line">
+                    <label for="pool-preset">快速载入</label
+                    ><select id="pool-preset">
+                      <option value="">选择股票池模板</option>
+                    </select>
+                  </div>
+                </section>
+                <section class="config-section">
+                  <div class="section-title">
+                    <h3><span class="step-number">02</span>交易策略</h3>
+                    <span class="muted small">可多选比较</span>
+                  </div>
+                  <label class="strategy-option"
+                    ><input
+                      type="checkbox"
+                      name="strategy"
+                      value="buy_hold"
+                      checked /><span class="strategy-icon blue"
+                      ><svg><use href="#i-pool" /></svg></span
+                    ><span
+                      ><strong>买入持有</strong
+                      ><small>初始买入，持续持有</small></span
+                    ><span class="option-check"></span
+                  ></label>
+                  <label class="strategy-option"
+                    ><input
+                      type="checkbox"
+                      name="strategy"
+                      value="ma_band"
+                      checked /><span class="strategy-icon green"
+                      ><svg><use href="#i-chart" /></svg></span
+                    ><span
+                      ><strong>MA 均线策略</strong
+                      ><small>偏离均线，择时买卖</small></span
+                    ><span class="option-check"></span
+                  ></label>
+                  <div id="ma-options" class="strategy-settings">
+                    <div class="field">
+                      <label for="ma-window">均线窗口 <span>交易日</span></label
+                      ><input
+                        id="ma-window"
+                        type="number"
+                        value="30"
+                        min="1"
+                        max="5000"
+                        required
+                      />
+                    </div>
+                    <div class="ma-presets" aria-label="均线快捷选择">
+                      <button type="button" data-ma="30" class="selected">
+                        MA30</button
+                      ><button type="button" data-ma="60">MA60</button
+                      ><button type="button" data-ma="120">MA120</button
+                      ><button type="button" data-ma="250">MA250</button>
+                    </div>
+                    <div class="field">
+                      <label for="threshold">买卖偏离比例</label>
+                      <div class="input-unit">
+                        <input
+                          id="threshold"
+                          type="number"
+                          value="5"
+                          min="0.01"
+                          max="99.99"
+                          step="0.01"
+                          required
+                        /><span>%</span>
+                      </div>
+                    </div>
+                    <p class="rule-note" id="ma-rule">
+                      低于 MA30 的 95% 买入，高于 105% 卖出。
+                    </p>
+                  </div>
+                  <label class="strategy-option"
+                    ><input
+                      type="checkbox"
+                      name="strategy"
+                      value="fixed_weight" /><span class="strategy-icon amber"
+                      ><svg><use href="#i-refresh" /></svg></span
+                    ><span
+                      ><strong>固定权重再平衡</strong
+                      ><small>定期恢复配置权重</small></span
+                    ><span class="option-check"></span
+                  ></label>
+                  <div id="rebalance-options" class="strategy-settings" hidden>
+                    <div class="field">
+                      <label for="frequency">再平衡频率</label
+                      ><select id="frequency">
+                        <option value="monthly">每月</option>
+                        <option value="quarterly">每季度</option>
+                        <option value="semiannual">每半年</option>
+                        <option value="annual">每年</option>
+                        <option value="each_observation">每个交易日</option>
+                      </select>
+                    </div>
+                  </div>
+                </section>
+                <section class="config-section">
+                  <div class="section-title">
+                    <h3><span class="step-number">03</span>回测条件</h3>
+                  </div>
+                  <div class="two-fields">
+                    <div class="field">
+                      <label for="period">历史范围</label
+                      ><select id="period">
+                        <option value="1y">最近 1 年</option>
+                        <option value="3y">最近 3 年</option>
+                        <option value="5y" selected>最近 5 年</option>
+                        <option value="10y">最近 10 年</option>
+                        <option value="max">全部历史</option>
+                        <option value="ytd">今年以来</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label for="initial-cash">初始资金</label
+                      ><input
+                        id="initial-cash"
+                        type="number"
+                        value="100000"
+                        min="1"
+                        step="any"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label for="fee-rate"
+                      >单边手续费 <span>买入 / 卖出分别计费</span></label
+                    >
+                    <div class="input-unit">
+                      <input
+                        id="fee-rate"
+                        type="number"
+                        value="0"
+                        min="0"
+                        max="99.99"
+                        step="0.001"
+                        required
+                      /><span>%</span>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label for="data-mode">行情读取方式</label
+                    ><select id="data-mode">
+                      <option value="cache">优先使用本地缓存</option>
+                      <option value="refresh">重新下载并更新缓存</option>
+                      <option value="offline">仅使用缓存 · 完全离线</option>
+                    </select>
+                  </div>
+                  <p class="small muted data-hint">
+                    缓存不会自动更新。首次使用的股票会下载完整历史。
+                  </p>
+                </section>
+                <div class="run-controls">
+                  <div
+                    id="form-error"
+                    class="form-error"
+                    role="alert"
+                    hidden
+                  ></div>
+                  <button
+                    class="button primary run-button"
+                    id="run-button"
+                    type="submit"
+                  >
+                    <svg><use href="#i-play" /></svg><span>运行回测</span
+                    ><kbd>↵</kbd>
+                  </button>
+                  <p>各策略独立账户 · 同区间 · 同初始资金</p>
+                </div>
+              </form>
+            </aside>
+            <div class="results-area">
+              <div class="results-toolbar">
+                <div class="result-status">
+                  <span class="status-dot muted-dot" id="result-dot"></span
+                  ><span id="result-status">准备开始</span>
+                </div>
+                <div class="result-actions">
+                  <button id="reuse-button" class="text-button" hidden>
+                    恢复本次参数</button
+                  ><a
+                    id="download-all"
+                    class="button secondary small-button"
+                    hidden
+                    ><svg><use href="#i-download" /></svg>导出结果</a
+                  >
+                </div>
+              </div>
+              <div id="dirty-banner" class="notice" hidden>
+                参数已修改。当前显示的是上一次结果，重新运行后更新。
+              </div>
+              <div id="job-progress" class="job-progress panel" hidden>
+                <div>
+                  <span class="spinner"></span
+                  ><strong id="job-message">正在启动…</strong
+                  ><span id="job-percent">0%</span>
+                </div>
+                <progress id="progress-bar" max="100" value="0"></progress>
+                <p>可切换页面查看记录；回测将在后台继续运行。</p>
+              </div>
+              <div class="metric-grid" id="metrics">
+                <article class="metric-card">
+                  <span>最终总资产</span><strong>—</strong
+                  ><small>等待回测结果</small>
+                </article>
+                <article class="metric-card">
+                  <span>累计收益率</span><strong>—</strong
+                  ><small>相同资金，比较收益</small>
+                </article>
+                <article class="metric-card">
+                  <span>年化收益率</span><strong>—</strong
+                  ><small>按实际区间年化</small>
+                </article>
+                <article class="metric-card">
+                  <span>最大回撤</span><strong>—</strong
+                  ><small>每日收盘资产计算</small>
+                </article>
+              </div>
+              <section class="panel chart-panel">
+                <div class="chart-header">
+                  <div>
+                    <span class="section-kicker">PERFORMANCE</span>
+                    <h2>策略表现 <span id="chart-date-range"></span></h2>
+                  </div>
+                  <div class="segmented" id="chart-mode">
+                    <button class="active" data-mode="total_return">
+                      累计收益</button
+                    ><button data-mode="drawdown">回撤</button
+                    ><button data-mode="equity">总资产</button>
+                  </div>
+                </div>
+                <div class="chart-subbar">
+                  <div id="chart-legend" class="chart-legend">
+                    <span class="legend-item"
+                      ><i class="legend-dot blue-dot"></i>买入持有</span
+                    ><span class="legend-item"
+                      ><i class="legend-dot green-dot"></i>MA 均线策略</span
+                    >
+                  </div>
+                  <div id="chart-period" class="range-buttons">
+                    <button data-months="3">3个月</button
+                    ><button data-months="6">6个月</button
+                    ><button data-months="12">1年</button
+                    ><button data-months="0" class="active">全部</button>
+                  </div>
+                </div>
+                <div class="chart-wrap" id="chart-wrap">
+                  <svg
+                    id="chart"
+                    viewBox="0 0 900 320"
+                    role="img"
+                    aria-label="策略历史表现图"
+                  ></svg>
+                  <div class="chart-empty" id="chart-empty">
+                    <div class="empty-chart-icon">
+                      <svg><use href="#i-chart" /></svg>
+                    </div>
+                    <h3>让你的策略有据可依</h3>
+                    <p>在左侧配置股票池与策略，运行第一组回测。</p>
+                    <span>真实行情 · 统一引擎 · 可复现的结果</span>
+                  </div>
+                  <div class="chart-tooltip" id="chart-tooltip" hidden></div>
+                </div>
+                <div class="chart-footer">
+                  <span
+                    ><svg><use href="#i-info" /></svg
+                    >历史表现基于复权收盘价，未强制期末卖出。</span
+                  ><span id="curve-info">支持多策略对比</span>
+                </div>
+              </section>
+              <section class="panel comparison-panel">
+                <div class="panel-heading compact">
+                  <div>
+                    <span class="section-kicker">SIDE BY SIDE</span>
+                    <h2>策略对比</h2>
+                  </div>
+                  <a id="comparison-download" class="text-button" hidden
+                    >下载 CSV <svg><use href="#i-download" /></svg
+                  ></a>
+                </div>
+                <div class="table-scroll">
+                  <table id="comparison-table">
+                    <thead>
+                      <tr>
+                        <th>策略</th>
+                        <th>最终资产</th>
+                        <th>累计收益</th>
+                        <th>年化收益</th>
+                        <th>最大回撤</th>
+                        <th>相对持有</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td colspan="6" class="empty-cell">
+                          运行回测后，比较收益与风险。
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+              <section class="panel details-panel">
+                <div class="panel-heading compact">
+                  <div>
+                    <span class="section-kicker">UNDER THE HOOD</span>
+                    <h2>回测明细</h2>
+                  </div>
+                  <select id="detail-strategy" aria-label="明细策略">
+                    <option value="">选择策略</option>
+                  </select>
+                </div>
+                <div id="detail-summary" class="detail-summary"></div>
+                <div class="detail-tabs" id="detail-tabs">
+                  <button data-table="trades" class="active">交易盈亏</button
+                  ><button data-table="fills">成交记录</button
+                  ><button data-table="monthly_returns">月度收益</button
+                  ><button data-table="yearly_returns">年度收益</button
+                  ><button data-table="positions">期末持仓</button
+                  ><button data-table="orders">订单</button>
+                </div>
+                <div class="table-scroll" id="detail-table">
+                  <p class="empty-cell">每一笔交易，都有完整记录。</p>
+                </div>
+                <div class="detail-footer">
+                  <span id="detail-count">暂无记录</span
+                  ><a id="detail-download" class="text-button" hidden
+                    >下载完整 CSV <svg><use href="#i-download" /></svg
+                  ></a>
+                </div>
+              </section>
+              <div class="method-note">
+                <svg><use href="#i-info" /></svg>
+                <p>
+                  <strong>回测口径</strong> MA
+                  信号在下一有效交易日收盘执行；买入持有在首个有效收盘日建仓。均线预热期保留现金。数据与结果仅存储在本机。
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section id="history-view" class="view" hidden>
+          <div class="panel history-panel">
+            <div class="panel-heading">
+              <div>
+                <span class="section-kicker">EXPERIMENT LOG</span>
+                <h2>
+                  运行记录 <span id="history-count" class="count-pill">0</span>
+                </h2>
+              </div>
+              <button
+                class="button secondary small-button"
+                id="refresh-history"
+              >
+                <svg><use href="#i-refresh" /></svg>刷新记录
+              </button>
+            </div>
+            <p class="panel-intro">
+              网页与命令行生成的回测结果，在这里统一查看。点击记录恢复参数、查看曲线或导出文件。
+            </p>
+            <div id="history-list" class="history-list">
+              <p class="empty-cell">正在读取运行记录…</p>
+            </div>
+          </div>
+        </section>
+        <section id="cache-view" class="view" hidden>
+          <div class="cache-intro">
+            <span class="cache-intro-icon"
+              ><svg><use href="#i-data" /></svg
+            ></span>
+            <div>
+              <h2>下载一次，多次研究。</h2>
+              <p>所有策略共享本地行情。修改参数、切换策略，无需重复下载。</p>
+            </div>
+            <span id="cache-total" class="cache-total"
+              >—<small>已缓存标的</small></span
+            >
+          </div>
+          <div class="panel">
+            <div class="panel-heading">
+              <div>
+                <span class="section-kicker">LOCAL MARKET DATA</span>
+                <h2>行情缓存</h2>
+              </div>
+              <button id="refresh-cache" class="button secondary small-button">
+                <svg><use href="#i-refresh" /></svg>刷新列表
+              </button>
+            </div>
+            <p class="panel-intro">
+              需要最新行情时，在回测配置中选择「重新下载并更新缓存」。下表日期为行情真实截止日。
+            </p>
+            <div class="table-scroll">
+              <table id="cache-table">
+                <thead>
+                  <tr>
+                    <th>股票代码</th>
+                    <th>行情起始</th>
+                    <th>行情截止</th>
+                    <th>价格点数</th>
+                    <th>缓存更新时间</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+        <footer class="app-footer">
+          <span>F·Analysis <i>研究，始于比较。</i></span
+          ><span>本地工作区 <b>•</b> Python 回测引擎</span>
+        </footer>
+      </main>
+    </div>
+    <div id="toast" role="status" hidden></div>
+    <dialog id="help-dialog">
+      <div class="dialog-heading">
+        <h2>让研究更简单</h2>
+        <button class="icon-button" id="close-help" aria-label="关闭说明">
+          <svg><use href="#i-close" /></svg>
+        </button>
+      </div>
+      <ol>
+        <li>
+          <strong>配置股票池</strong>
+          <p>
+            使用 Yahoo 代码，上海为 .SS、深圳为 .SZ。权重合计不超过
+            100%，其余为现金。
+          </p>
+        </li>
+        <li>
+          <strong>选择策略与参数</strong>
+          <p>
+            可同时比较多个策略。MA30 / MA120 表示有效交易日数量，偏离 5%
+            对应均线的 95% / 105%。
+          </p>
+        </li>
+        <li>
+          <strong>运行并查看结果</strong>
+          <p>
+            结果自动保存在
+            outputs/web_backtest/。可导出全部报告，在「记录」中随时重新打开。
+          </p>
+        </li>
+      </ol>
+      <div class="notice">
+        本地缓存不会自动更新。离线模式不会联网；刷新模式重新下载本次股票的完整历史。
+      </div>
+      <button class="button primary" id="help-done">
+        开始研究 <svg><use href="#i-arrow" /></svg>
+      </button>
+    </dialog>
+  </body>
+</html>
