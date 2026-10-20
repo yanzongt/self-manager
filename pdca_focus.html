@@ -805,6 +805,16 @@
             color: #8193a8
         }
 
+        .history-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 16px 0; }
+        .history-filters label { display: grid; gap: 6px; font-size: 12px; color: #a9b9ca; min-width: 130px; }
+        .history-filters .control { min-width: 0; }
+        .history-pagination { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; }
+        .history-pagination .actions { align-items: center; flex-wrap: wrap; }
+        .work-item[draggable] { cursor: grab; }
+        .quadrant.drag-over { outline: 2px dashed #79ccb2; background: #20372f; }
+        .work-move { display: grid; gap: 5px; margin-top: 9px; font-size: 11px; color: #a9b9ca; }
+        .work-move .control { min-width: 0; padding: 6px 8px; font-size: 12px; }
+
         .work-empty {
             font-size: 12px;
             color: #7f92a9;
@@ -898,7 +908,7 @@
                     <div id="pomoStatus" class="muted" role="status" aria-live="polite"></div>
                     <div id="pomoTimer" class="pomo-clock"></div>
                     <div class="session-actions"><button id="pomoStart" type="button"
-                            class="small-btn">启动番茄钟</button><button id="pomoStop" type="button"
+                            class="small-btn">启动 Work</button><button id="pomoStartBreak" type="button" class="small-btn">启动 Break</button><button id="pomoStop" type="button"
                             class="small-btn">关闭番茄钟</button><button id="pomoNext" type="button" class="small-btn">切换到
                             Break</button></div>
                 </section>
@@ -927,6 +937,7 @@
                             type="submit">添加事项</button><button id="workItemCancel" class="small-btn" type="button"
                             hidden>取消编辑</button></form><label class="check-label" for="showDoneItems"><input
                             id="showDoneItems" type="checkbox">显示已完成事项</label>
+                    <p class="hint">可拖动事项标题到其他象限，或使用卡片内的「移至象限」调整分类；点击「编辑」修改标题。</p>
                     <div id="workQuadrants" class="quadrants"></div>
                 </section>
                 <div class="summary">
@@ -972,6 +983,13 @@
                                 id="importJson">恢复 JSON</button><input id="importInput" type="file"
                                 accept="application/json,.json" hidden></div>
                     </div>
+                    <div class="history-filters">
+                        <label>开始日期<input type="date" id="historyFrom" class="control"></label>
+                        <label>结束日期<input type="date" id="historyTo" class="control"></label>
+                        <label>项目标签<select id="historyTag" class="control"><option value="">全部标签</option></select></label>
+                        <label>每页条数<select id="historyPageSize" class="control"><option value="5">5 条</option><option value="10" selected>10 条</option><option value="20">20 条</option><option value="50">50 条</option></select></label>
+                        <button class="small-btn" type="button" id="historyReset">清除筛选</button>
+                    </div>
                     <div class="table-wrap">
                         <table>
                             <thead>
@@ -988,6 +1006,11 @@
                         </table>
                     </div>
                     <div id="emptyHistory" class="empty">还没有历史记录，开始你的第一轮 PDCA。</div>
+                    <nav class="history-pagination" aria-label="历史记录分页">
+                        <span id="historySummary" class="hint" role="status" aria-live="polite"></span>
+                        <div class="actions"><button id="historyPrev" class="small-btn" type="button">上一页</button><span id="historyPage" class="hint"></span><button id="historyNext" class="small-btn" type="button">下一页</button></div>
+                    </nav>
+                    <p class="hint">日期范围包含起止两天，按会话开始日期筛选。导出 TXT 和备份 JSON 仍包含全部记录。</p>
                     <p class="hint">计时以真实时间戳为准，刷新页面后仍可恢复进行中的会话；记录以开始日期归属统计。数据保存到本机文件，建议定期备份 JSON。</p>
                 </section>
             </main>
@@ -1014,7 +1037,7 @@
             <div class="divider"></div>
             <div id="reviewPomoStatus" class="hint"></div>
             <div class="session-actions"><button class="small-btn" type="button"
-                    id="reviewPomoStart">启动番茄钟</button><button class="small-btn" type="button"
+                    id="reviewPomoStart">启动 Work</button><button class="small-btn" type="button" id="reviewPomoStartBreak">启动 Break</button><button class="small-btn" type="button"
                     id="reviewPomoNext">切换番茄钟阶段</button><button class="small-btn" type="button"
                     id="reviewPomoStop">关闭番茄钟</button></div>
             <div class="fineprint">当前页面的遮罩不可直接关闭。延长也需要填写复盘，形成决策记录。浏览器仍允许你切到其他程序或关闭页面。</div>
@@ -1027,6 +1050,7 @@
             const KEY = 'focus_pdca_singlefile_v1';
             const $ = id => document.getElementById(id);
             const defaults = { tags: ['学习', '工作', '娱乐', '运动', '阅读', '其他'], records: [], active: null, workItems: [], pomoSettings: { workMinutes: 25, breakMinutes: 5, autoSwitch: true }, pomodoro: null };
+            let historyPage = 1;
             let db = structuredClone(defaults), result = null, alerted = false, toastTimeout = null;
             let storageReady = false, revision = null, saveQueue = Promise.resolve(), pendingSaves = 0, dirty = false, conflict = false, ticking = false;
             function legacyData() { try { const o = JSON.parse(localStorage.getItem(KEY)); if (o && Array.isArray(o.tags) && Array.isArray(o.records)) return normalizeDb(o) } catch (e) { } return null }
@@ -1116,22 +1140,77 @@
             $('historyBody').addEventListener('click', exportComment);
             let editingWorkItem = null;
             function applyPomoSettings() { const s = db.pomoSettings; $('pomoWork').value = s.workMinutes; $('pomoBreak').value = s.breakMinutes; $('pomoAuto').checked = db.pomodoro?.auto ?? s.autoSwitch }
-            function createPomodoro(at, settings) { const p = { id: makeId(), workMinutes: settings.workMinutes, breakMinutes: settings.breakMinutes, auto: settings.autoSwitch }; startPomoPhase(p, 'work', at); return p }
+            function createPomodoro(at, settings, phase = 'work') { const p = { id: makeId(), workMinutes: settings.workMinutes, breakMinutes: settings.breakMinutes, auto: settings.autoSwitch }; startPomoPhase(p, phase, at); return p }
             function startPomoPhase(p, phase, at) { p.phase = phase; p.startedAt = at; p.phaseEndsAt = at + (phase === 'work' ? p.workMinutes : p.breakMinutes) * 60000; p.waiting = false; p.stopped = false }
             function nativePomodoro(p) { return { phase: p.phase, startedAt: p.startedAt, phaseEndsAt: p.phaseEndsAt, workMinutes: p.workMinutes, breakMinutes: p.breakMinutes, auto: p.auto, waiting: p.waiting, stopped: p.stopped } }
             function phaseName(phase) { return phase === 'work' ? 'Work · 专注' : 'Break · 休息' }
             function advancePomodoro(p, now) { const report = { changed: false, message: null, title: null }; if (!p || p.stopped) return report; let switches = 0; while (!p.waiting && p.phaseEndsAt <= now) { const end = p.phaseEndsAt, previous = p.phase; report.changed = true; report.event = { at: end, phase: previous, waiting: true, manual: false }; if (!p.auto) { p.waiting = true; report.title = '番茄钟：阶段结束'; report.message = `${phaseName(previous)}结束，请手动开始${phaseName(previous === 'work' ? 'break' : 'work')}。`; break } startPomoPhase(p, previous === 'work' ? 'break' : 'work', end); report.event = { at: end, phase: p.phase, waiting: false, manual: false }; switches++; report.title = `番茄钟：进入${phaseName(p.phase)}`; report.message = `已切换到${phaseName(p.phase)}，${p.phase === 'work' ? p.workMinutes : p.breakMinutes}分钟。` } if (switches > 1) report.message = `已按时间恢复 ${switches} 次阶段切换；当前${phaseName(p.phase)}。`; return report }
-            function renderPomodoro() { const p = db.pomodoro; $('pomoStatus').textContent = !p ? '番茄钟已关闭' : p.waiting ? `${phaseName(p.phase)}结束，等待手动切换` : `正在${phaseName(p.phase)}`; $('pomoTimer').textContent = !p || p.waiting ? '00:00' : clock(Math.max(0, p.phaseEndsAt - Date.now())); $('pomoTimer').className = 'pomo-clock ' + (p?.phase === 'break' ? 'phase-break' : 'running'); $('pomoStart').hidden = !!p; $('pomoStop').hidden = !p; $('pomoNext').hidden = !p; $('pomoStop').disabled = !p; $('pomoNext').disabled = !p; $('pomoNext').textContent = `${p?.waiting ? '开始' : '切换到'} ${p?.phase === 'work' ? 'Break' : 'Work'}`; $('pomoWork').disabled = !!p; $('pomoBreak').disabled = !!p; $('pomoAuto').disabled = false; $('reviewPomoStatus').textContent = '番茄钟 · ' + $('pomoStatus').textContent; $('reviewPomoStart').hidden = !!p; $('reviewPomoStop').hidden = !p; $('reviewPomoNext').hidden = !p; $('reviewPomoNext').textContent = $('pomoNext').textContent }
+            function renderPomodoro() { const p = db.pomodoro; $('pomoStatus').textContent = !p ? '番茄钟已关闭' : p.waiting ? `${phaseName(p.phase)}结束，等待手动切换` : `正在${phaseName(p.phase)}`; $('pomoTimer').textContent = !p || p.waiting ? '00:00' : clock(Math.max(0, p.phaseEndsAt - Date.now())); $('pomoTimer').className = 'pomo-clock ' + (p?.phase === 'break' ? 'phase-break' : 'running'); $('pomoStart').hidden = !!p; $('pomoStartBreak').hidden = !!p; $('pomoStop').hidden = !p; $('pomoNext').hidden = !p; $('pomoStop').disabled = !p; $('pomoNext').disabled = !p; $('pomoNext').textContent = `${p?.waiting ? '开始' : '切换到'} ${p?.phase === 'work' ? 'Break' : 'Work'}`; $('pomoWork').disabled = !!p; $('pomoBreak').disabled = !!p; $('pomoAuto').disabled = false; $('reviewPomoStatus').textContent = '番茄钟 · ' + $('pomoStatus').textContent; $('reviewPomoStart').hidden = !!p; $('reviewPomoStartBreak').hidden = !!p; $('reviewPomoStop').hidden = !p; $('reviewPomoNext').hidden = !p; $('reviewPomoNext').textContent = $('pomoNext').textContent }
             function sendPomoEvent(p, event, title, message) { if (nativeReady) { nativeRequest('/api/phase', { ...event, id: p.id, purpose: '番茄钟' }).catch(e => { notificationStatus('番茄钟系统提醒失败：' + e.message); notify(false, title, message) }) } else notify(false, title, message) }
             function announcePomo(p) { const message = `已开始${phaseName(p.phase)}，${p.phase === 'work' ? p.workMinutes : p.breakMinutes}分钟。`; sendPomoEvent(p, { at: p.startedAt, phase: p.phase, waiting: false, manual: true }, `番茄钟：进入${phaseName(p.phase)}`, message); toast(message); beep() }
             function readPomoSettings() { const work = Number($('pomoWork').value), rest = Number($('pomoBreak').value); if (!Number.isInteger(work) || !Number.isInteger(rest) || work < 1 || rest < 1 || work > 1440 || rest > 1440) { toast('Work / Break 时长需为1至1440分钟的整数'); return null } return { workMinutes: work, breakMinutes: rest, autoSwitch: $('pomoAuto').checked } }
-            $('pomoStart').onclick = async () => { if (db.pomodoro) return; const settings = readPomoSettings(); if (!settings) return; prepareAudio(); db.pomoSettings = settings; db.pomodoro = createPomodoro(Date.now(), settings); announcePomo(db.pomodoro); if (!await save()) { render(); return; } renderPomodoro() };
+            async function startPomodoro(phase) { if (db.pomodoro) return; const settings = readPomoSettings(); if (!settings) return; prepareAudio(); db.pomoSettings = settings; db.pomodoro = createPomodoro(Date.now(), settings, phase); announcePomo(db.pomodoro); if (!await save()) { render(); return; } renderPomodoro() }
+            $('pomoStart').onclick = () => startPomodoro('work');
+            $('pomoStartBreak').onclick = () => startPomodoro('break');
             $('pomoStop').onclick = async () => { db.pomodoro = null; if (!await save()) { render(); return; } renderPomodoro(); toast('番茄钟已关闭') };
             $('pomoNext').onclick = async () => { prepareAudio(); const p = db.pomodoro; if (!p) return; startPomoPhase(p, p.phase === 'work' ? 'break' : 'work', Date.now()); announcePomo(p); if (!await save()) { render(); return; } renderPomodoro() };
-            $('reviewPomoStart').onclick = () => $('pomoStart').onclick(); $('reviewPomoStop').onclick = () => $('pomoStop').onclick(); $('reviewPomoNext').onclick = () => $('pomoNext').onclick();
+            $('reviewPomoStart').onclick = () => $('pomoStart').onclick(); $('reviewPomoStartBreak').onclick = () => $('pomoStartBreak').onclick(); $('reviewPomoStop').onclick = () => $('pomoStop').onclick(); $('reviewPomoNext').onclick = () => $('pomoNext').onclick();
             for (const id of ['pomoWork', 'pomoBreak']) $(id).onchange = async () => { if (db.pomodoro) return; const settings = readPomoSettings(); if (!settings) { applyPomoSettings(); return } db.pomoSettings = settings; await save() };
             $('pomoAuto').onchange = async () => { const checked = $('pomoAuto').checked; tick(); db.pomoSettings.autoSwitch = checked; const p = db.pomodoro; if (p) { p.auto = checked; if (checked && p.waiting) { startPomoPhase(p, p.phase === 'work' ? 'break' : 'work', Date.now()); announcePomo(p) } } if (!await save()) { render(); return; } renderPomodoro() };
-            function renderWorkItems() { const selected = db.active?.workItemId || $('workItemSelect').value; $('workItemSelect').innerHTML = '<option value="">不关联任务</option>' + db.workItems.filter(w => !w.done || w.id === selected).map(w => `<option value="${esc(w.id)}">${esc(w.title)}</option>`).join(''); $('workItemSelect').value = db.workItems.some(w => w.id === selected) ? selected : ''; const groups = [{ important: true, urgent: true, title: '重要 · 紧急', hint: '优先处理' }, { important: true, urgent: false, title: '重要 · 不紧急', hint: '安排时间' }, { important: false, urgent: true, title: '不重要 · 紧急', hint: '尽量委托或集中处理' }, { important: false, urgent: false, title: '不重要 · 不紧急', hint: '减少投入' }]; $('workQuadrants').innerHTML = groups.map((g, i) => { const items = db.workItems.filter(w => w.important === g.important && w.urgent === g.urgent && ($('showDoneItems').checked || !w.done)); return `<section class="quadrant q${i + 1}"><h3>${g.title} <span class="hint">${items.length}</span></h3><div class="hint">${g.hint}</div>${items.length ? items.map(w => `<article class="work-item ${w.done ? 'done' : ''}"><div class="work-title">${esc(w.title)}</div><time>${esc(fmtComment(w.createdAt))}${w.done ? ' · 已完成' : ''}</time><div class="actions"><button class="small-btn" data-item-action="done" data-item-id="${esc(w.id)}">${w.done ? '恢复待办' : '标记完成'}</button><button class="small-btn" data-item-action="edit" data-item-id="${esc(w.id)}">编辑</button><button class="small-btn" data-item-action="plan" data-item-id="${esc(w.id)}" ${db.active || w.done ? 'disabled' : ''}>用于本次工作</button><button class="delete" data-item-action="delete" data-item-id="${esc(w.id)}" aria-label="删除工作事项">删除</button></div></article>`).join('') : '<p class="work-empty">暂无事项</p>'}</section>` }).join('') }
+            const workGroups = [
+                { important: true, urgent: true, title: '重要 · 紧急', hint: '优先处理' },
+                { important: true, urgent: false, title: '重要 · 不紧急', hint: '安排时间' },
+                { important: false, urgent: true, title: '不重要 · 紧急', hint: '尽量委托或集中处理' },
+                { important: false, urgent: false, title: '不重要 · 不紧急', hint: '减少投入' }
+            ];
+            function renderWorkItems() {
+                const selected = db.active?.workItemId || $('workItemSelect').value;
+                $('workItemSelect').innerHTML = '<option value="">不关联任务</option>' + db.workItems.filter(w => !w.done || w.id === selected).map(w => `<option value="${esc(w.id)}">${esc(w.title)}</option>`).join('');
+                $('workItemSelect').value = db.workItems.some(w => w.id === selected) ? selected : '';
+                $('workQuadrants').innerHTML = workGroups.map((g, i) => {
+                    const items = db.workItems.filter(w => w.important === g.important && w.urgent === g.urgent && ($('showDoneItems').checked || !w.done));
+                    return `<section class="quadrant q${i + 1}" data-quadrant="${i}"><h3>${g.title} <span class="hint">${items.length}</span></h3><div class="hint">${g.hint}</div>${items.length ? items.map(w => `
+                        <article class="work-item ${w.done ? 'done' : ''}" draggable="true" data-work-id="${esc(w.id)}">
+                            <div class="work-title">${esc(w.title)}</div><time>${esc(fmtComment(w.createdAt))}${w.done ? ' · 已完成' : ''}</time>
+                            <label class="work-move">移至象限<select class="control" data-move-item="${esc(w.id)}" aria-label="${esc(w.title)}：移至象限">${workGroups.map((target, index) => `<option value="${index}" ${index === i ? 'selected' : ''}>${target.title}</option>`).join('')}</select></label>
+                            <div class="actions"><button class="small-btn" data-item-action="done" data-item-id="${esc(w.id)}">${w.done ? '恢复待办' : '标记完成'}</button><button class="small-btn" data-item-action="edit" data-item-id="${esc(w.id)}">编辑</button><button class="small-btn" data-item-action="plan" data-item-id="${esc(w.id)}" ${db.active || w.done ? 'disabled' : ''}>用于本次工作</button><button class="delete" data-item-action="delete" data-item-id="${esc(w.id)}" aria-label="删除工作事项">删除</button></div>
+                        </article>`).join('') : '<p class="work-empty">暂无事项，可拖动事项到这里</p>'}</section>`;
+                }).join('');
+            }
+            async function moveWorkItem(id, index) {
+                const group = workGroups[index], item = db.workItems.find(w => w.id === id);
+                if (!group || !item || (item.important === group.important && item.urgent === group.urgent)) return;
+                if (editingWorkItem === id) { $('workImportant').checked = group.important; $('workUrgent').checked = group.urgent; }
+                if (await commitItems(db.workItems.map(w => w.id === id ? { ...w, important: group.important, urgent: group.urgent, updatedAt: Date.now() } : w))) toast('事项已移至「' + group.title + '」');
+            }
+            $('workQuadrants').addEventListener('change', e => {
+                const select = e.target.closest('[data-move-item]');
+                if (select) return moveWorkItem(select.dataset.moveItem, Number(select.value));
+            });
+            let draggedWorkItem = null;
+            function clearDrag() { draggedWorkItem = null; document.querySelectorAll('.quadrant.drag-over').forEach(el => el.classList.remove('drag-over')); }
+            $('workQuadrants').addEventListener('dragstart', e => {
+                const item = e.target.closest('[data-work-id]');
+                if (!item || e.target.closest('button, input, select')) { e.preventDefault(); return; }
+                draggedWorkItem = item.dataset.workId;
+                e.dataTransfer.setData('text/plain', draggedWorkItem);
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            $('workQuadrants').addEventListener('dragover', e => {
+                const zone = e.target.closest('[data-quadrant]');
+                if (!draggedWorkItem || !zone) return;
+                e.preventDefault(); e.dataTransfer.dropEffect = 'move'; zone.classList.add('drag-over');
+            });
+            $('workQuadrants').addEventListener('dragleave', e => {
+                const zone = e.target.closest('[data-quadrant]');
+                if (zone && !zone.contains(e.relatedTarget)) zone.classList.remove('drag-over');
+            });
+            $('workQuadrants').addEventListener('drop', async e => {
+                const zone = e.target.closest('[data-quadrant]'), id = draggedWorkItem;
+                if (!id || !zone) return;
+                e.preventDefault(); clearDrag(); await moveWorkItem(id, Number(zone.dataset.quadrant));
+            });
+            $('workQuadrants').addEventListener('dragend', clearDrag);
             async function commitItems(items) { db.workItems = items; renderWorkItems(); if (!await save()) return false; return true }
             function resetWorkEditor() { editingWorkItem = null; $('workItemTitle').value = ''; $('workImportant').checked = true; $('workUrgent').checked = true; $('workItemSave').textContent = '添加事项'; $('workItemCancel').hidden = true }
             $('workItemForm').addEventListener('submit', async e => { e.preventDefault(); const title = $('workItemTitle').value.trim(); if (!title || title.length > 300) { toast('事项标题不能为空且最多300字符'); return } const now = Date.now(), existing = db.workItems.find(w => w.id === editingWorkItem), item = { ...existing, id: existing?.id || makeId(), title, important: $('workImportant').checked, urgent: $('workUrgent').checked, done: existing?.done || false, createdAt: existing?.createdAt || now, updatedAt: now }; const items = existing ? db.workItems.map(w => w.id === item.id ? item : w) : [...db.workItems, item]; if (await commitItems(items)) { resetWorkEditor(); toast(existing ? '事项已更新' : '事项已添加') } });
@@ -1145,7 +1224,28 @@
             function chartEmpty(t) { return `<div class="empty">${esc(t)}</div>` }
             function barChart() { const filter = $('periodFilter').value; const today = new Date(); today.setHours(0, 0, 0, 0); const floor = filter === 'today' ? today.getTime() : filter === 'week' ? today.getTime() - 6 * 86400000 : -Infinity; const rows = db.records.filter(r => r.startedAt >= floor), m = new Map(); for (const r of rows) m.set(r.tag, (m.get(r.tag) || 0) + duration(r)); const items = [...m].sort((a, b) => b[1] - a[1]).slice(0, 7), host = $('tagChart'); if (!items.length) { host.innerHTML = chartEmpty('该时间范围暂无数据'); return } const max = Math.max(...items.map(x => x[1]), 1); const totalH = Math.max(205, items.length * 29 + 12); let nodes = ''; items.forEach(([tag, v], i) => { const y = 8 + i * 29, w = 195 * v / max; nodes += `<text x="0" y="${y + 12}">${svgText(tag.length > 7 ? tag.slice(0, 7) + '…' : tag)}</text><rect x="93" y="${y}" width="195" height="15" rx="5" fill="#293949"/><rect x="93" y="${y}" width="${w}" height="15" rx="5" fill="#61bca3"/><text x="296" y="${y + 12}">${formatMin(v)}m</text>` }); host.innerHTML = `<svg viewBox="0 0 350 ${totalH}" preserveAspectRatio="xMinYMin meet" role="img" aria-label="各项目累计使用分钟数">${nodes}</svg>` }
             function lineChart() { const tag = $('trendTag').value, records = db.records.filter(r => tag === 'all' || r.tag === tag), host = $('trendChart'); if (!records.length) { host.innerHTML = chartEmpty('该项目暂无历史数据'); return } const perDay = new Map(); for (const r of records) { const d = day(r.startedAt); perDay.set(d, (perDay.get(d) || 0) + duration(r)) } const keys = [...perDay.keys()].sort(); let start = new Date(keys[0] + 'T00:00:00'), end = new Date(); end.setHours(0, 0, 0, 0); if (start > end) start = end; const span = Math.min(30, Math.round((end - start) / 86400000) + 1); start = new Date(end); start.setDate(end.getDate() - span + 1); let arr = []; for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) { const label = day(d); arr.push({ label, value: perDay.get(label) || 0 }) } const max = Math.max(...arr.map(a => a.value), 1), left = 35, right = 338, top = 15, bottom = 175; const x = i => left + (right - left) * (arr.length === 1 ? .5 : i / (arr.length - 1)); const y = v => bottom - (bottom - top) * v / max; const pts = arr.map((a, i) => `${x(i)},${y(a.value)}`).join(' '); let paths = ''; for (let i = 0; i < 4; i++) { const yy = top + (bottom - top) * i / 3; paths += `<line x1="35" y1="${yy}" x2="338" y2="${yy}" stroke="#324252" stroke-dasharray="3 4"/><text x="30" y="${yy + 4}" text-anchor="end">${formatMin(max * (1 - i / 3))}</text>` } const ticks = [0, Math.floor((arr.length - 1) / 2), arr.length - 1].filter((v, i, a) => a.indexOf(v) === i); for (const i of ticks) paths += `<text x="${x(i)}" y="197" text-anchor="middle">${arr[i].label.slice(5)}</text>`; host.innerHTML = `<svg viewBox="0 0 350 210" preserveAspectRatio="none" role="img" aria-label="最近最多30天按日期的使用时间折线图">${paths}<polyline points="${pts}" fill="none" stroke="#77d6ba" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>${arr.map((a, i) => `<circle cx="${x(i)}" cy="${y(a.value)}" r="2.6" fill="#a9eed9"><title>${a.label}：${formatMin(a.value)} 分钟</title></circle>`).join('')}</svg>` }
-            function history() { const list = [...db.records].sort((a, b) => b.startedAt - a.startedAt); $('emptyHistory').hidden = list.length > 0; $('historyBody').innerHTML = list.map(r => `<tr><td style="white-space:nowrap">${esc(fmt(r.startedAt))}</td><td><div class="purpose">${esc(r.purpose)}</div><small>${esc(r.review)}</small>${r.extensions?.length ? `<small>中途复盘 ${r.extensions.length} 次</small>` : ''}${commentList(r)}${r.workItemTitle ? `<small>Work item：${esc(r.workItemTitle)}</small>` : ''}</td><td><span class="tag">${esc(r.tag)}</span></td><td>${formatMin(r.plannedMinutes)} / ${formatMin(duration(r))} 分钟</td><td><span class="status ${r.result === 'partial' ? 'partial' : r.result === 'not_completed' ? 'no' : ''}">${({ completed: '已完成', partial: '部分完成', not_completed: '未完成' })[r.result] || '未知'}</span></td><td><div class="actions"><button type="button" class="small-btn" data-export-record="${esc(r.id)}">导出记录 TXT</button><button class="delete" data-delete="${esc(r.id)}" title="删除该记录" aria-label="删除记录">✕</button></div></td></tr>`).join('') }
+            function history() {
+                const selected = $('historyTag').value;
+                const tags = [...new Set([...db.tags, ...db.records.map(r => r.tag)])];
+                $('historyTag').innerHTML = '<option value="">全部标签</option>' + tags.map(tag => `<option value="${esc(tag)}">${esc(tag)}</option>`).join('');
+                $('historyTag').value = tags.includes(selected) ? selected : '';
+                const from = $('historyFrom').value, to = $('historyTo').value, tag = $('historyTag').value;
+                const list = db.records.filter(r => (!from || day(r.startedAt) >= from) && (!to || day(r.startedAt) <= to) && (!tag || r.tag === tag)).sort((a, b) => b.startedAt - a.startedAt);
+                const size = Number($('historyPageSize').value) || 10, pages = Math.max(1, Math.ceil(list.length / size));
+                historyPage = Math.max(1, Math.min(historyPage, pages));
+                const offset = (historyPage - 1) * size, visible = list.slice(offset, offset + size);
+                $('emptyHistory').hidden = list.length > 0;
+                $('emptyHistory').textContent = from && to && from > to ? '开始日期不能晚于结束日期，请调整筛选。' : db.records.length ? '没有符合筛选条件的记录。' : '还没有历史记录，开始你的第一轮 PDCA。';
+                $('historySummary').textContent = `共 ${db.records.length} 条，符合筛选 ${list.length} 条${list.length ? `，显示第 ${offset + 1}–${offset + visible.length} 条` : ''}`;
+                $('historyPage').textContent = `${historyPage} / ${pages} 页`;
+                $('historyPrev').disabled = historyPage <= 1;
+                $('historyNext').disabled = historyPage >= pages;
+                $('historyBody').innerHTML = visible.map(r => `<tr><td style="white-space:nowrap">${esc(fmt(r.startedAt))}</td><td><div class="purpose">${esc(r.purpose)}</div><small>${esc(r.review)}</small>${r.extensions?.length ? `<small>中途复盘 ${r.extensions.length} 次</small>` : ''}${commentList(r)}${r.workItemTitle ? `<small>Work item：${esc(r.workItemTitle)}</small>` : ''}</td><td><span class="tag">${esc(r.tag)}</span></td><td>${formatMin(r.plannedMinutes)} / ${formatMin(duration(r))} 分钟</td><td><span class="status ${r.result === 'partial' ? 'partial' : r.result === 'not_completed' ? 'no' : ''}">${({ completed: '已完成', partial: '部分完成', not_completed: '未完成' })[r.result] || '未知'}</span></td><td><div class="actions"><button type="button" class="small-btn" data-export-record="${esc(r.id)}">导出记录 TXT</button><button class="delete" data-delete="${esc(r.id)}" title="删除该记录" aria-label="删除记录">✕</button></div></td></tr>`).join('');
+            }
+            for (const id of ['historyFrom', 'historyTo', 'historyTag', 'historyPageSize']) $(id).onchange = () => { historyPage = 1; history(); };
+            $('historyPrev').onclick = () => { historyPage--; history(); };
+            $('historyNext').onclick = () => { historyPage++; history(); };
+            $('historyReset').onclick = () => { for (const id of ['historyFrom', 'historyTo', 'historyTag']) $(id).value = ''; historyPage = 1; history(); };
             function render() { updateTags(); stat(); barChart(); lineChart(); history(); renderSession(); renderComments(); renderPomodoro(); renderWorkItems() }
             $('startForm').addEventListener('submit', async e => { e.preventDefault(); prepareAudio(); if (db.active) return; const purpose = $('purpose').value.trim(), tag = $('tag').value, n = Number($('minutes').value); if (!purpose || !tag || !Number.isInteger(n) || n < 1 || n > 1440) { toast('请填写目的、标签和1至1440分钟的预算'); return } db.active = { id: makeId(), purpose, tag, budgetMinutes: n, extraMinutes: 0, startedAt: Date.now(), extensions: [], comments: [] }; const workItem = db.workItems.find(w => w.id === $('workItemSelect').value); if (workItem) { db.active.workItemId = workItem.id; db.active.workItemTitle = workItem.title } alerted = false; if (!await save()) { render(); return; } render(); toast('计时已开始') });
             $('presets').addEventListener('click', e => { const b = e.target.closest('[data-min]'); if (!b) return; $('minutes').value = b.dataset.min; document.querySelectorAll('#presets button').forEach(x => x.classList.toggle('active', x === b)) }); $('minutes').addEventListener('input', () => document.querySelectorAll('#presets button').forEach(x => x.classList.toggle('active', x.dataset.min === $('minutes').value)));

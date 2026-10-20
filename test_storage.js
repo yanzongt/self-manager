@@ -106,6 +106,46 @@ async function main(){
   assert.match(filePage.element('storageStatus').textContent,/python3 serve.py/);
   filePage.element('exportLegacy').onclick();
   assert.deepEqual(JSON.parse(await filePage.downloads[0].text()).data.tags,['旧记录']);
-  console.log('Page checks passed: migration, authoritative file data, comments, timers, refresh, import, failed writes/retry, conflicts, unavailable service and legacy export.');
+  // Break can be the initial phase, including the review overlay controls.
+  const restDisk = server(empty()), restPage = page(restDisk); await settle();
+  await restPage.element('pomoStartBreak').onclick();
+  assert.equal(restDisk.data.pomodoro.phase, 'break');
+  assert.equal(restDisk.data.pomodoro.phaseEndsAt - restDisk.data.pomodoro.startedAt, 5 * minute);
+  await restPage.tick(5);
+  assert.equal(restDisk.data.pomodoro.phase, 'work');
+  await restPage.element('pomoStop').onclick();
+  await restPage.element('reviewPomoStartBreak').onclick();
+  assert.equal(restDisk.data.pomodoro.phase, 'break');
+
+  const many = empty();
+  many.records = Array.from({length:23}, (_,i) => ({id:'record-'+i, purpose:'记录'+i, tag:i%2?'学习':'工作', startedAt:Date.UTC(2026,9,i+1,8), plannedMinutes:5, actualMinutes:5}));
+  many.workItems = [{id:'item', title:'调整事项', important:true, urgent:true, createdAt:start, done:false}];
+  const historyDisk=server(many), historyPage=page(historyDisk); await settle();
+  const rowCount=()=> (historyPage.element('historyBody').innerHTML.match(/<tr>/g)||[]).length;
+  assert.equal(rowCount(),10);
+  historyPage.element('historyNext').onclick();
+  assert.equal(rowCount(),10);
+  historyPage.element('historyNext').onclick();
+  assert.equal(rowCount(),3);
+  assert.equal(historyPage.element('historyNext').disabled,true);
+  historyPage.element('historyPageSize').value='5'; historyPage.element('historyPageSize').onchange();
+  assert.equal(rowCount(),5);
+  assert.equal(historyPage.element('historyPage').textContent,'1 / 5 页');
+  historyPage.element('historyFrom').value='2026-10-05'; historyPage.element('historyTo').value='2026-10-08';
+  historyPage.element('historyTag').value='工作'; historyPage.element('historyTag').onchange();
+  assert.equal(rowCount(),2);
+  assert.match(historyPage.element('historySummary').textContent,/符合筛选 2 条/);
+  assert.equal((await historyPage.export()).data.records.length,23);
+  historyPage.element('historyFrom').value='2026-10-09'; historyPage.element('historyFrom').onchange();
+  assert.equal(rowCount(),0);
+  assert.match(historyPage.element('emptyHistory').textContent,/开始日期不能晚于结束日期/);
+  historyPage.element('historyReset').onclick();
+  assert.equal(rowCount(),5);
+  await historyPage.fire('workQuadrants','change',{closest:()=>({dataset:{moveItem:'item'}, value:'3'})});
+  assert.equal(historyDisk.data.workItems[0].important,false);
+  assert.equal(historyDisk.data.workItems[0].urgent,false);
+  assert.equal(historyDisk.data.workItems[0].title,'调整事项');
+  assert.equal(historyDisk.data.records.length,23);
+  console.log('Page checks passed: migration, authoritative file data, comments, Work/Break starts, pagination/date/tag filters, task moves, refresh, import, failed writes/retry, conflicts, unavailable service and legacy export.');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

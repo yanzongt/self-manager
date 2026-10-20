@@ -1119,22 +1119,64 @@ $("#backtest-form").addEventListener("input", (event) => {
 $("#backtest-form").addEventListener("change", (event) => {
   if (!event.target.closest(".pool-row")) changed();
 });
+function renderPoolPresets(selected = "") {
+  $("#pool-preset").replaceChildren();
+  addOption($("#pool-preset"), "选择股票池模板", "");
+  state.config.presets.forEach((item) => addOption(
+    $("#pool-preset"),
+    item.saved ? `已保存：${item.name}` : item.name === "example" ? "示例：银行 / 汽车 / 红利" : item.name,
+    item.name,
+  ));
+  $("#pool-preset").value = selected;
+}
 $("#pool-preset").addEventListener("change", () => {
-  const preset = state.config.presets.find(
+  const preset = state.config?.presets.find(
     (item) => item.name === $("#pool-preset").value,
   );
   if (preset) {
-    const entries = Object.entries(preset.stocks);
+    const entries = Object.entries(preset.stocks || {});
+    const pool = preset.pool || entries.map(([ticker, name]) => ({
+      ticker, name, weight: Math.floor(100000000 / entries.length) / 100000000,
+    }));
     $("#pool-rows").replaceChildren();
-    entries.forEach(([ticker, name]) =>
-      addStock({
-        ticker,
-        name,
-        weight: Math.floor(100000000 / entries.length) / 100000000,
-      }),
-    );
+    pool.forEach((stock) => addStock(stock));
+    $("#pool-name").value = preset.saved ? preset.name : "";
     changed();
-    toast("已载入股票池，策略参数保持不变");
+    toast("已载入股票池及权重，策略参数保持不变");
+  }
+});
+$("#new-pool").addEventListener("click", () => {
+  if (!confirm("新建将清空当前编辑的股票池，尚未保存的内容将丢失。是否继续？")) return;
+  $("#pool-rows").replaceChildren();
+  addStock({ weight: 1 }, true);
+  $("#pool-name").value = "";
+  $("#pool-preset").value = "";
+  changed();
+});
+$("#save-pool").addEventListener("click", async () => {
+  if (!state.config) return toast("请等待本机服务连接后再保存");
+  const name = $("#pool-name").value.trim();
+  if (!name) { $("#pool-name").focus(); return toast("请填写股票池名称"); }
+  if (!$$(".pool-row input").every((input) => input.reportValidity())) return;
+  const exists = state.config.presets.some((item) => item.saved && item.name === name);
+  if (exists && !confirm(`股票池「${name}」已存在，是否覆盖保存？`)) return;
+  const button = $("#save-pool");
+  const pool = formData().pool;
+  button.disabled = true;
+  button.textContent = "保存中…";
+  try {
+    const result = await api("/api/pools", {
+      method: "POST", body: JSON.stringify({name, pool, overwrite: exists}),
+    });
+    state.config.presets = result.presets;
+    renderPoolPresets(result.name);
+    $("#pool-name").value = result.name;
+    toast("股票池已保存到本机，下次可从快速载入中选择");
+  } catch (error) {
+    toast(`保存失败：${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = "保存股票池";
   }
 });
 $("#reuse-button").addEventListener("click", () => {
@@ -1199,13 +1241,7 @@ async function boot() {
     $("#connection-text").textContent = "本机引擎已连接";
     const draft = readStorage("f-analysis.draft.v1");
     applyConfig(draft?.pool?.length ? draft : state.config.defaults);
-    state.config.presets.forEach((item) =>
-      addOption(
-        $("#pool-preset"),
-        item.name === "example" ? "示例：银行 / 汽车 / 红利" : item.name,
-        item.name,
-      ),
-    );
+    renderPoolPresets();
     await refreshRuns();
     const last = state.runs.find((run) => run.state === "succeeded");
     if (last) {

@@ -19,3 +19,6 @@ data/cache/
 outputs/*/*/
 !outputs/*/legacy/
 !outputs/*/legacy/**
+
+# User-saved stock pools
+data/stock_pools.json

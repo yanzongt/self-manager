@@ -134,6 +134,12 @@ window.fetch = async (url, options = {}) => {
         },
       ],
     };
+  else if (url === "/api/pools" && options.method === "POST") {
+    const saved = JSON.parse(options.body);
+    assert.equal(options.headers["X-Local-Token"], "test-token");
+    assert.equal(saved.name, "长期配置");
+    data = { name: saved.name, presets: [...config.presets, { name: saved.name, pool: saved.pool, saved: true }] };
+  }
   else if (url === "/api/runs" && options.method === "POST") {
     payload = JSON.parse(options.body);
     assert.equal(options.headers["X-Local-Token"], "test-token");
@@ -191,6 +197,19 @@ try {
   assert.match($("#ma-rule").textContent, /MA120/);
   $("#equal-weights").click();
   assert.equal($("#cash-weight").textContent, "0%");
+  $("#pool-name").value = "长期配置";
+  const weights = window.document.querySelectorAll(".stock-weight");
+  weights[0].value = "30";
+  weights[1].value = "20";
+  $("#save-pool").click();
+  await waitFor(() => $("#pool-preset").value === "长期配置" && !$("#save-pool").disabled);
+  weights[0].value = "90";
+  $("#pool-preset").dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.equal(window.document.querySelectorAll(".stock-weight")[0].value, "30");
+  assert.equal(window.document.querySelectorAll(".stock-weight")[1].value, "20");
+  assert.equal($("#cash-weight").textContent, "50%");
+  assert.equal($("#ma-window").value, "120");
+  $("#equal-weights").click();
   $("#data-mode").value = "offline";
   $("#data-mode").dispatchEvent(new window.Event("change", { bubbles: true }));
   $("#backtest-form").dispatchEvent(
@@ -231,7 +250,7 @@ try {
   );
   assert.equal($("#global-error").hidden, true);
   console.log(
-    "Frontend DOM smoke passed: setup, stock pool, MA120, submission, progress, chart toggles, tables, dirty-state, history and cache.",
+    "Frontend DOM smoke passed: setup, saved stock pools and weights, MA120, submission, progress, chart toggles, tables, dirty-state, history and cache.",
   );
 } catch (error) {
   console.error(

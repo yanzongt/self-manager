@@ -10,7 +10,7 @@ import secrets
 from urllib.parse import unquote, urlsplit
 import webbrowser
 
-from f_analysis.web_service import WebApplication
+from f_analysis.web_service import PoolConflict, WebApplication
 
 STATIC = Path(__file__).resolve().parents[1] / "f_analysis/web_static"
 DEFAULT_PORT = 8766
@@ -135,18 +135,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(403, {"error": "页面已过期，请刷新后重试"})
         if self.headers.get("Content-Type", "").split(";", 1)[0] != "application/json":
             return self._send(415, {"error": "请求必须使用 JSON"})
-        if urlsplit(self.path).path != "/api/runs":
+        path = urlsplit(self.path).path
+        if path not in ("/api/runs", "/api/pools"):
             return self._send(404, {"error": "接口不存在"})
         try:
             size = int(self.headers.get("Content-Length", "0"))
             if not 0 < size <= 100_000:
                 return self._send(413, {"error": "请求为空或过大"})
             data = json.loads(self.rfile.read(size))
+            if path == "/api/pools":
+                return self._send(200, self.app.save_pool(data))
             self._send(202, self.app.submit(data))
+        except PoolConflict as exc:
+            self._send(409, {"error": str(exc)})
         except (ValueError, TypeError) as exc:
             self._send(400, {"error": str(exc)})
         except Exception:
-            self._send(500, {"error": "无法启动回测，请检查服务终端"})
+            self._send(500, {"error": "操作失败，请检查服务终端"})
 
 
 def make_server(app, host="127.0.0.1", port=DEFAULT_PORT):

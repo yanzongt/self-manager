@@ -156,6 +156,15 @@
                     <span id="pool-count">0 只股票</span
                     ><span>剩余现金 <b id="cash-weight">0%</b></span>
                   </div>
+                  <div class="pool-save">
+                    <label for="pool-name">股票池名称</label>
+                    <input id="pool-name" maxlength="80" placeholder="例如：长期配置" autocomplete="off">
+                    <div class="pool-save-actions">
+                      <button type="button" class="text-button" id="new-pool">新建股票池</button>
+                      <button type="button" class="text-button" id="save-pool">保存股票池</button>
+                    </div>
+                    <span class="muted small">保存股票及权重，供下次快速载入。</span>
+                  </div>
                   <div class="preset-line">
                     <label for="pool-preset">快速载入</label
                     ><select id="pool-preset">

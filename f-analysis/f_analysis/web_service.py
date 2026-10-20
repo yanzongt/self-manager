@@ -6,6 +6,8 @@ from datetime import datetime
 import io
 import json
 import math
+import os
+import tempfile
 from pathlib import Path
 import re
 import secrets
@@ -160,6 +162,10 @@ def normalize_request(data):
     }
 
 
+class PoolConflict(ValueError):
+    pass
+
+
 class WebApplication:
     def __init__(
         self, project_root=PROJECT_ROOT, *, price_loader=None, cache_path=None
@@ -172,20 +178,78 @@ class WebApplication:
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="backtest")
         self.lock = Lock()
         self.jobs = {}
+        self.pools_lock = Lock()
+        self.pools_path = self.root / "data/stock_pools.json"
 
     def close(self):
         self.executor.shutdown(wait=True)
 
-    def configuration(self):
+    def _saved_pools(self):
+        try:
+            pools = json.loads(self.pools_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return []
+        except (OSError, ValueError) as exc:
+            raise ValueError("已保存的股票池文件无法读取，请检查 data/stock_pools.json；原文件未被覆盖") from exc
+        if not isinstance(pools, list):
+            raise ValueError("股票池文件格式无效；原文件未被覆盖")
+        for item in pools:
+            if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+                raise ValueError("股票池文件格式无效；原文件未被覆盖")
+            normalize_request({"pool": item.get("pool")})
+        return pools
+
+    def pool_presets(self):
         presets = []
         for path in sorted((self.root / "configs/pools").glob("*.json")):
             pool = read_json(path)
             if isinstance(pool, dict) and pool:
                 presets.append({"name": path.stem, "stocks": pool})
+        with self.pools_lock:
+            presets.extend({**item, "saved": True} for item in self._saved_pools())
+        return presets
+
+    def save_pool(self, data):
+        if not isinstance(data, dict) or not isinstance(data.get("name"), str):
+            raise ValueError("请填写股票池名称")
+        name = data["name"].strip()
+        if not 1 <= len(name) <= 80 or any(ord(c) < 32 for c in name):
+            raise ValueError("股票池名称需为 1～80 个字符，不能包含控制字符")
+        config = normalize_request({"pool": data.get("pool")})
+        item = {"name": name, "pool": [
+            {"ticker": ticker, "name": title, "weight": config["weights"][ticker]}
+            for ticker, title in config["pool"].items()
+        ]}
+        if any(path.stem == name for path in (self.root / "configs/pools").glob("*.json")):
+            raise PoolConflict("此名称属于内置股票池，请使用其他名称")
+        with self.pools_lock:
+            pools = self._saved_pools()
+            existing = next((i for i, pool in enumerate(pools) if pool["name"] == name), None)
+            if existing is not None:
+                if data.get("overwrite") is not True:
+                    raise PoolConflict("此名称已存在，请重新载入后确认覆盖，或使用其他名称")
+                pools[existing] = item
+            else:
+                pools.append(item)
+            self.pools_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = None
+            try:
+                with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=self.pools_path.parent, delete=False) as file:
+                    temporary = Path(file.name)
+                    json.dump(pools, file, ensure_ascii=False, indent=2, allow_nan=False)
+                    file.flush()
+                    os.fsync(file.fileno())
+                os.replace(temporary, self.pools_path)
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
+        return {"name": name, "presets": self.pool_presets()}
+
+    def configuration(self):
         return {
             "token": self.token,
             "strategies": STRATEGIES,
-            "presets": presets,
+            "presets": self.pool_presets(),
             "defaults": {
                 "pool": [
                     {"ticker": "600036.SS", "name": "招商银行", "weight": 0.5},

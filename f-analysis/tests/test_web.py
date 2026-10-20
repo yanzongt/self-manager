@@ -90,6 +90,51 @@ class WebTests(unittest.TestCase):
             time.sleep(0.02)
         self.fail("后台回测没有在预期时间内完成")
 
+    def test_named_pool_save_load_overwrite_and_restart(self):
+        payload = {"name": "我的长期组合", "pool": request_data()["pool"]}
+        status, _, body = self.http("/api/pools", payload)
+        self.assertEqual(status, 200)
+        saved = json.loads(body)["presets"][0]
+        self.assertTrue(saved["saved"])
+        self.assertEqual(saved["pool"], payload["pool"])
+        self.assertEqual(sum(stock["weight"] for stock in saved["pool"]), 0.8)
+        self.assertEqual(self.http("/api/pools", payload)[0], 409)
+        changed = {**payload, "pool": [{"ticker": "c", "name": "新资产", "weight": 0.3}]}
+        self.assertEqual(self.http("/api/pools", {**changed, "overwrite": True})[0], 200)
+        restarted = WebApplication(self.root)
+        try:
+            pools = restarted.configuration()["presets"]
+            self.assertEqual(len(pools), 1)
+            self.assertEqual(pools[0]["pool"], [{"ticker": "C", "name": "新资产", "weight": 0.3}])
+        finally:
+            restarted.close()
+        self.assertEqual(self.app.jobs, {})  # Saving a pool never submits a backtest.
+
+    def test_pool_validation_authentication_and_builtin_protection(self):
+        payload = {"name": "组合", "pool": request_data()["pool"]}
+        for headers in ({"X-Local-Token": "wrong"}, {"Origin": "https://example.com"}, {"Host": "example.com"}):
+            self.assertEqual(self.http("/api/pools", payload, headers)[0], 403)
+        for update in ({"name": " "}, {"name": "x" * 81}, {"pool": []},
+                       {"pool": [{"ticker": "A", "weight": -1}]},
+                       {"pool": [{"ticker": "A", "weight": 0.8}, {"ticker": "A", "weight": 0.1}]},
+                       {"pool": [{"ticker": "A", "weight": 1.1}]}):
+            with self.subTest(update=update):
+                self.assertEqual(self.http("/api/pools", {**payload, **update})[0], 400)
+        self.assertFalse(self.app.pools_path.exists())
+        directory = self.root / "configs/pools"
+        directory.mkdir(parents=True)
+        (directory / "example.json").write_text('{"A":"资产甲"}')
+        self.assertEqual(self.http("/api/pools", {**payload, "name": "example", "overwrite": True})[0], 409)
+        self.assertEqual(self.app.configuration()["presets"][0]["stocks"], {"A": "资产甲"})
+
+    def test_corrupt_pool_file_is_not_overwritten(self):
+        self.app.pools_path.parent.mkdir(parents=True)
+        self.app.pools_path.write_text("invalid json")
+        status, _, body = self.http("/api/pools", {"name": "组合", "pool": request_data()["pool"]})
+        self.assertEqual(status, 400)
+        self.assertIn("原文件未被覆盖", json.loads(body)["error"])
+        self.assertEqual(self.app.pools_path.read_text(), "invalid json")
+
     def test_page_static_assets_and_connection_config(self):
         status, headers, body = self.http("/")
         self.assertEqual(status, 200)
