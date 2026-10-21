@@ -8,19 +8,17 @@ import matplotlib.pyplot as plt
 from f_analysis import (
     BacktestConfig,
     BacktestEngine,
-    BuyAndHold,
-    FixedWeightRebalance,
-    MABand,
     StockPool,
 )
 from f_analysis.analytics import correlation_analysis
+from f_analysis.research import add_research_arguments, arguments_config, evaluate_robustness, make_strategy
 from f_analysis.reporting import compare_results, plot_comparison, save_result
 from f_analysis.strategies import FREQUENCIES, allocation
 
 from ._runtime import create_parser, prepare_run
 from .market_data import get_prices
 
-STRATEGY_NAMES = ("buy_hold", "ma_band", "fixed_weight")
+STRATEGY_NAMES = ("buy_hold", "ma_band", "fixed_weight", "cross_sectional_momentum")
 
 
 def main():
@@ -46,6 +44,7 @@ def main():
     parser.add_argument("--ma-window", type=int, default=30)
     parser.add_argument("--threshold", type=float, default=0.05)
     parser.add_argument("--rebalance-frequency", choices=FREQUENCIES, default="monthly")
+    add_research_arguments(parser)
     args = parser.parse_args()
     try:
         pool = (
@@ -67,19 +66,15 @@ def main():
             if args.strategy == ["all"]
             else list(dict.fromkeys(args.strategy))
         )
-        strategies = {}
-        for name in names:
-            if name == "buy_hold":
-                strategies[name] = BuyAndHold(weights)
-            elif name == "ma_band":
-                strategies[name] = MABand(args.ma_window, args.threshold, weights)
-            else:
-                strategies[name] = FixedWeightRebalance(
-                    weights, args.rebalance_frequency
-                )
+        research = arguments_config(args)
+        strategy_config = {**vars(args), **research, "weights": weights}
+        strategies = {name: make_strategy(name, strategy_config) for name in names}
+        for strategy in strategies.values():
+            strategy.initial_targets(pool)
     except (ValueError, TypeError, AttributeError, OSError) as exc:
         parser.error(str(exc))
     run_config = {
+        **research,
         "pool": dict(pool.stocks),
         "weights": weights,
         "period": args.period,
@@ -93,6 +88,7 @@ def main():
             "buy_hold": "first_available_close",
             "ma_band": "next_available_close",
             "fixed_weight": "first_close_of_calendar_period",
+            "cross_sectional_momentum": "next_available_close_after_ranking",
         },
         "force_liquidate": False,
     }
@@ -107,6 +103,7 @@ def main():
         result.summary.update(
             {"pool": dict(pool.stocks), "weights": weights, "fee_rate": args.fee_rate}
         )
+        evaluate_robustness(engine, prices, strategy, result, run_config)
         results[name] = result
         save_result(output_dir / name, result)
     comparison = compare_results(results)

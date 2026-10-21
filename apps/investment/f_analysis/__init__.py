@@ -2,7 +2,7 @@
 
 from .engine import BacktestEngine
 from .models import BacktestConfig, BacktestResult, StockPool, StrategyContext
-from .strategies import BaseStrategy, BuyAndHold, FixedWeightRebalance, MABand
+from .strategies import BaseStrategy, BuyAndHold, CrossSectionalMomentum, FixedWeightRebalance, MABand
 
 __all__ = [
     "StockPool",
@@ -14,4 +14,5 @@ __all__ = [
     "BuyAndHold",
     "FixedWeightRebalance",
     "MABand",
+    "CrossSectionalMomentum",
 ]

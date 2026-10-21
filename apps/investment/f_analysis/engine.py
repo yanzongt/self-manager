@@ -24,8 +24,16 @@ class BacktestEngine:
         self.pool = pool
         self.config = config or BacktestConfig()
 
-    def run(self, prices, strategy):
-        prices = self.pool.select_prices(prices)
+    def run(self, prices, strategy, *, start_date=None):
+        # 某些股票可能在当前子区间结束后才上市；不能要求其在段内已有价格。
+        prices = self.pool.select_prices(prices, allow_unquoted=start_date is not None)
+        start = (
+            0 if start_date is None
+            else prices.index.searchsorted(pd.Timestamp(start_date))
+        )
+        trading_prices = prices.iloc[start:]
+        if len(trading_prices) < 2:
+            raise ValueError("回测子区间至少需要两个行情日")
         account = Account(self.pool, self.config)
         pending, orders = {}, []
         history, positions = [], []
@@ -49,8 +57,19 @@ class BacktestEngine:
                 orders.append(order)
 
         submit(strategy.initial_targets(self.pool))
+        if start:
+            # 预热仅生成前一收盘信号；账户资金、成交和绩效从子区间起点计算。
+            context = StrategyContext(
+                date=prices.index[start - 1],
+                history=prices.iloc[:start].copy(),
+                pool=self.pool,
+                cash=account.cash,
+                equity=account.cash,
+                quantities=MappingProxyType({t: 0.0 for t in self.pool.tickers}),
+            )
+            submit(strategy.on_close(context), prices.index[start - 1])
         previous_date = None
-        for i, (date, quotes) in enumerate(prices.iterrows()):
+        for i, (date, quotes) in enumerate(trading_prices.iterrows(), start=start):
             marks.update(quotes.dropna().to_dict())
             # 日历再平衡是预先制定的计划；与收盘信号分开处理。
             submit(strategy.scheduled_targets(date, previous_date, self.pool))

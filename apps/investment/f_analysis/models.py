@@ -1,6 +1,6 @@
 """股票池、回测配置及标准结果；不依赖行情服务。"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Mapping
 
@@ -41,7 +41,7 @@ class StockPool:
     def tickers(self):
         return tuple(self.stocks)
 
-    def select_prices(self, prices):
+    def select_prices(self, prices, *, allow_unquoted=False):
         if not isinstance(prices.index, pd.DatetimeIndex) or prices.index.hasnans:
             raise ValueError("行情索引必须为有效日期")
         if prices.index.has_duplicates or not prices.index.is_monotonic_increasing:
@@ -55,7 +55,7 @@ class StockPool:
         if np.isinf(values).any() or (frame <= 0).any().any():
             raise ValueError("有效行情必须为有限正数")
         frame = frame.dropna(how="all")
-        if len(frame) < 2 or frame.notna().sum().eq(0).any():
+        if len(frame) < 2 or (not allow_unquoted and frame.notna().sum().eq(0).any()):
             raise ValueError("至少需要两个行情日期，且每只股票至少有一个有效价格")
         return frame
 
@@ -90,3 +90,6 @@ class BacktestResult:
     trades: pd.DataFrame
     orders: pd.DataFrame
     summary: dict
+    subperiods: pd.DataFrame = field(default_factory=pd.DataFrame)
+    sensitivity: pd.DataFrame = field(default_factory=pd.DataFrame)
+    robustness: dict = field(default_factory=dict)

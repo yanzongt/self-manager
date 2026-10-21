@@ -34,10 +34,12 @@ const defaults = {
   rebalance_frequency: "monthly",
   data_mode: "cache",
 };
+let submitted = 0;
 let payload,
   detail,
   polls = 0;
 const config = {
+  capabilities: {research_version: 1},
   token: "test-token",
   presets: [{ name: "example", stocks: { "600036.SS": "招商银行" } }],
   defaults,
@@ -77,6 +79,9 @@ function makeDetail() {
     fills: [],
     positions: [],
     orders: [],
+    subperiods: [{subperiod: 1, start: "2024-01-01", end: "2024-01-02", total_return: 0.1}],
+    sensitivity: [{parameter: "baseline", status: "ok", total_return: 0.05},
+                  {parameter: "buy_threshold", base_value: 0.05, value: 0.045, status: "ok", total_return: 0.02, return_delta: -0.03}],
     monthly_returns: [
       {
         date: "2024-01-31",
@@ -106,9 +111,11 @@ function makeDetail() {
         name,
         {
           summary: { ...summary, strategy: name },
+          robustness: {subperiods: {count: 2, total_return: {mean: 0.05, std: 0.02, min: 0.03, max: 0.07, positive_fraction: 1},
+            cagr: {std: 0.02}, max_drawdown: {std: 0.01}, excess_return: {positive_fraction: 0.5}, no_trade_fraction: 0}},
           curve,
           tables,
-          counts: { trades: 1, monthly_returns: 1 },
+          counts: { trades: 1, monthly_returns: 1, subperiods: 1, sensitivity: 2 },
         },
       ]),
     ),
@@ -141,6 +148,7 @@ window.fetch = async (url, options = {}) => {
     data = { name: saved.name, presets: [...config.presets, { name: saved.name, pool: saved.pool, saved: true }] };
   }
   else if (url === "/api/runs" && options.method === "POST") {
+    submitted += 1;
     payload = JSON.parse(options.body);
     assert.equal(options.headers["X-Local-Token"], "test-token");
     detail = makeDetail();
@@ -212,11 +220,43 @@ try {
   $("#equal-weights").click();
   $("#data-mode").value = "offline";
   $("#data-mode").dispatchEvent(new window.Event("change", { bubbles: true }));
+  $('input[value="cross_sectional_momentum"]').click();
+  assert.equal($("#momentum-options").hidden, false);
+  $("#momentum-lookback").value = "63";
+  $("#momentum-interval").value = "10";
+  $("#sell-threshold").value = "8";
+  $("#subperiod-count").value = "5";
+  $("#sensitivity-enabled").click();
+  assert.equal($("#perturbation").disabled, false);
+  // A refreshed frontend must not submit new research fields to an old Python process.
+  delete config.capabilities;
+  $("#backtest-form").dispatchEvent(
+    new window.Event("submit", { bubbles: true, cancelable: true }),
+  );
+  await waitFor(() => $("#form-error").textContent.includes("后台服务版本过旧"));
+  assert.equal(submitted, 0);
+  assert.equal($("#run-button").disabled, false);
+  config.capabilities = {research_version: 1};
   $("#backtest-form").dispatchEvent(
     new window.Event("submit", { bubbles: true, cancelable: true }),
   );
   await waitFor(() => !$("#download-all").hidden && !$("#run-button").disabled);
   assert.equal(payload.ma_window, 120);
+  assert.equal(payload.buy_threshold, 0.05);
+  assert.equal(payload.sell_threshold, 0.08);
+  assert.equal(payload.momentum_lookback, 63);
+  assert.equal(payload.momentum_interval, 10);
+  assert.equal(payload.subperiod_count, 5);
+  assert.equal(payload.sensitivity_enabled, true);
+  assert.equal(payload.perturbation, 0.1);
+  assert.ok(payload.strategies.includes("cross_sectional_momentum"));
+  assert.match($("#robustness-summary").textContent, /标准差/);
+  $('[data-table="subperiods"]').click();
+  assert.match($("#detail-table").textContent, /2024-01-01/);
+  $('[data-table="sensitivity"]').click();
+  assert.match($("#detail-table").textContent, /买入偏离比例/);
+  assert.match($("#detail-table").textContent, /4.50%/);
+  assert.match($("#detail-download").href, /sensitivity.csv/);
   assert.equal(payload.data_mode, "offline");
   assert.equal($("#chart-empty").hidden, true);
   assert.equal($("#comparison-table tbody").children.length, 2);
@@ -232,6 +272,9 @@ try {
   assert.equal($("#dirty-banner").hidden, false);
   $("#reuse-button").click();
   assert.equal($("#ma-window").value, "120");
+  assert.equal($("#sell-threshold").value, "8");
+  assert.equal($("#momentum-lookback").value, "63");
+  assert.equal($("#sensitivity-enabled").checked, true);
   assert.equal($("#dirty-banner").hidden, true);
   $('[data-view="cache"]').click();
   await waitFor(() =>
@@ -249,6 +292,10 @@ try {
       window.document.querySelectorAll(".pool-row").length === 2,
   );
   assert.equal($("#global-error").hidden, true);
+  assert.match(window.missingResearchReport("subperiods", "ma_band", {subperiod_count: 5}), /已启用.*缺少报告/);
+  assert.match(window.missingResearchReport("subperiods", "ma_band", {}), /当前显示的这次回测未启用/);
+  assert.match(window.missingResearchReport("sensitivity", "ma_band", {sensitivity_enabled: true}), /已启用.*缺少报告/);
+  assert.match(window.missingResearchReport("sensitivity", "buy_hold", {sensitivity_enabled: true}), /没有适用的扰动参数/);
   console.log(
     "Frontend DOM smoke passed: setup, saved stock pools and weights, MA120, submission, progress, chart toggles, tables, dirty-state, history and cache.",
   );

@@ -2062,3 +2062,8 @@ dialog > .button {
 .pool-save input { width: 100%; min-width: 0; min-height: 34px; padding: 7px 9px; border: 1px solid #dce3e6; border-radius: 5px; background: #fff; color: var(--ink); font-size: 12px; }
 .pool-save-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 #save-pool { color: var(--accent, #237b67); }
+
+/* Research summaries share the detail panel and wrap on narrow screens. */
+.research-summary { padding: 12px 22px; font-size: 12px; line-height: 1.8; color: var(--text-secondary, #64748b); }
+.research-summary p { margin: 4px 0; }
+.legend-dot.purple-dot, .purple-dot { background: #8b5bb1; }

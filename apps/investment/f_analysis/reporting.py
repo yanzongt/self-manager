@@ -14,6 +14,7 @@ def save_result(output_dir, result):
         json.dumps(result.summary, ensure_ascii=False, indent=2, allow_nan=False),
         encoding="utf-8",
     )
+    save_research(output_dir, result)
     for name in ["history", "positions", "fills", "trades", "orders"]:
         frame = getattr(result, name)
         frame.to_csv(
@@ -59,3 +60,13 @@ def plot_comparison(results, output_path):
     fig.tight_layout()
     fig.savefig(output_path, dpi=150)
     return fig
+
+
+def save_research(output_dir, result):
+    if result.robustness:
+        (output_dir / "robustness.json").write_text(
+            json.dumps(result.robustness, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
+    for name in ("subperiods", "sensitivity"):
+        frame = getattr(result, name)
+        if not frame.empty:
+            frame.to_csv(output_dir / f"{name}.csv", index=False)

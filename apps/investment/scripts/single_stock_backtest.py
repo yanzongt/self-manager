@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 
 from f_analysis import BacktestConfig, BacktestEngine, BuyAndHold, MABand, StockPool
+from f_analysis.research import add_research_arguments, arguments_config, evaluate_robustness
+from f_analysis.reporting import save_research
 from f_analysis.analytics import period_performance
 from f_analysis.strategies import ma_band_signals
 
@@ -30,13 +32,16 @@ def backtest(
     threshold=THRESHOLD,
     fee_rate=FEE_RATE,
     strategy="ma_band",
+    buy_threshold=None,
+    sell_threshold=None,
+    return_result=False,
 ):
     """原单股票 API 的兼容入口；成交和账本统一由多资产引擎处理。"""
     if strategy not in STRATEGIES:
         raise ValueError(f"未知策略: {strategy}")
     close = close.dropna().astype(float)
     if strategy == "ma_band":
-        selected = MABand(window, threshold)
+        selected = MABand(window, threshold, buy_threshold=buy_threshold, sell_threshold=sell_threshold)
         if len(close) < window:
             raise ValueError(
                 f"行情只有 {len(close)} 个有效价格，不足 MA{window} 所需数据"
@@ -51,7 +56,7 @@ def backtest(
     result = engine.run(prices, selected)
     benchmark = result if strategy == "buy_hold" else engine.run(prices, BuyAndHold())
     diagnostics = (
-        ma_band_signals(close, window, threshold)
+        ma_band_signals(close, window, threshold, buy_threshold=buy_threshold, sell_threshold=sell_threshold)
         if strategy == "ma_band"
         else pd.DataFrame({"close": close, "signal": 0})
     )
@@ -81,7 +86,8 @@ def backtest(
             else "none",
         }
     )
-    return history, result.trades.drop(columns="ticker"), summary
+    values = (history, result.trades.drop(columns="ticker"), summary)
+    return (*values, result) if return_result else values
 
 
 def plot_result(results, ticker, output_dir, show):
@@ -177,7 +183,12 @@ def main():
     parser.add_argument(
         "--fee-rate", type=float, default=FEE_RATE, help="买卖各自的单边费率"
     )
+    add_research_arguments(parser, momentum=False)
     args = parser.parse_args()
+    try:
+        research = arguments_config(args)
+    except (ValueError, TypeError) as exc:
+        parser.error(str(exc))
     args.ticker = args.ticker.strip().upper()
     if not args.ticker:
         parser.error("股票代码不能为空")
@@ -202,6 +213,7 @@ def main():
             "fee_rate",
         ]
     }
+    config.update(research)
     strategies = list(STRATEGIES) if args.strategy == "all" else [args.strategy]
     config.update(
         {
@@ -223,14 +235,25 @@ def main():
     results = {}
     # 一次取数，所有策略使用完全相同的行情和账户计价逻辑。
     for strategy in strategies:
-        history, trades, summary = backtest(
+        history, trades, summary, core_result = backtest(
             prices[args.ticker],
             initial_cash=args.initial_cash,
             window=args.ma_window,
             threshold=args.threshold,
             fee_rate=args.fee_rate,
             strategy=strategy,
+            buy_threshold=research["buy_threshold"],
+            sell_threshold=research["sell_threshold"],
+            return_result=True,
         )
+        pool = StockPool.from_tickers(["ASSET"])
+        selected = (MABand(args.ma_window, args.threshold,
+                          buy_threshold=research["buy_threshold"], sell_threshold=research["sell_threshold"])
+                    if strategy == "ma_band" else BuyAndHold())
+        evaluate_robustness(BacktestEngine(pool, BacktestConfig(args.initial_cash, args.fee_rate)),
+                            prices[args.ticker].dropna().to_frame("ASSET"), selected, core_result, config)
+        summary.update({k: v for k, v in core_result.summary.items()
+                        if k.startswith(("subperiod_", "sensitivity_"))})
         summary.update(
             {
                 "ticker": args.ticker,
@@ -241,9 +264,11 @@ def main():
             }
         )
         if strategy == "ma_band":
-            summary.update({"ma_window": args.ma_window, "threshold": args.threshold})
+            summary.update({"ma_window": args.ma_window, "threshold": args.threshold,
+                            "buy_threshold": research["buy_threshold"], "sell_threshold": research["sell_threshold"]})
         results[strategy] = history, trades, summary
         save_result(output_dir / strategy, history, trades, summary, args.initial_cash)
+        save_research(output_dir / strategy, core_result)
         print_summary(summary)
     comparison = pd.DataFrame([value[2] for value in results.values()])
     comparison["extra_return_vs_buy_hold"] = (

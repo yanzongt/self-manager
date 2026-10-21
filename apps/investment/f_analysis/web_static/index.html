@@ -221,7 +221,7 @@
                       ><button type="button" data-ma="250">MA250</button>
                     </div>
                     <div class="field">
-                      <label for="threshold">买卖偏离比例</label>
+                      <label for="threshold">买入偏离比例</label>
                       <div class="input-unit">
                         <input
                           id="threshold"
@@ -233,6 +233,10 @@
                           required
                         /><span>%</span>
                       </div>
+                    </div>
+                    <div class="field">
+                      <label for="sell-threshold">卖出偏离比例</label>
+                      <div class="input-unit"><input id="sell-threshold" type="number" value="5" min="0.01" max="99.99" step="0.01" required><span>%</span></div>
                     </div>
                     <p class="rule-note" id="ma-rule">
                       低于 MA30 的 95% 买入，高于 105% 卖出。
@@ -260,6 +264,17 @@
                         <option value="each_observation">每个交易日</option>
                       </select>
                     </div>
+                  </div>
+                  <label class="strategy-option">
+                    <input type="checkbox" name="strategy" value="cross_sectional_momentum">
+                    <span class="strategy-icon blue"><svg><use href="#i-chart" /></svg></span>
+                    <span><strong>截面动量策略</strong><small>定期买入过去收益前 N 名</small></span><span class="option-check"></span>
+                  </label>
+                  <div id="momentum-options" class="strategy-settings" hidden>
+                    <div class="field"><label for="momentum-lookback">收益回看长度 <span>行情日</span></label><input id="momentum-lookback" type="number" min="1" max="5000" value="126" required></div>
+                    <div class="field"><label for="momentum-interval">调仓间隔 <span>行情日</span></label><input id="momentum-interval" type="number" min="1" max="5000" value="21" required></div>
+                    <div class="field"><label for="momentum-top-n">持有前 N 只</label><input id="momentum-top-n" type="number" min="1" max="50" value="1" required></div>
+                    <p class="rule-note">收盘排名，下一有效收盘成交。入选股票各占 1/N，不使用上方固定权重；合格股票不足 N 只时空缺份额留现金。回看期内缺失行情的股票不参与排名。</p>
                   </div>
                 </section>
                 <section class="config-section">
@@ -317,6 +332,14 @@
                   <p class="small muted data-hint">
                     缓存不会自动更新。首次使用的股票会下载完整历史。
                   </p>
+                </section>
+                <section class="config-section">
+                  <div class="section-title"><h3><span class="step-number">04</span>稳定性研究</h3></div>
+                  <div class="field"><label for="subperiod-count">独立子区间数量</label><input id="subperiod-count" type="number" min="0" max="50" value="0" required></div>
+                  <p class="rule-note">0 为关闭，2～50 为启用。按行情日等分，每段重新建仓并计入费用；利用起点之前的行情预热信号。</p>
+                  <label class="strategy-option"><input id="sensitivity-enabled" type="checkbox"><span><strong>参数扰动分析</strong><small>单独改变每个参数，比较效果</small></span><span class="option-check"></span></label>
+                  <div class="field"><label for="perturbation">相对扰动幅度</label><div class="input-unit"><input id="perturbation" type="number" min="0.01" max="99.99" step="0.01" value="10" required><span>%</span></div></div>
+                  <p class="rule-note">例如 5% 偏离比例在 ±10% 扰动后为 4.5%、5.5%。行情日参数至少改变 1 日。启用后会额外运行多组回测。</p>
                 </section>
                 <div class="run-controls">
                   <div
@@ -455,12 +478,12 @@
                         <th>累计收益</th>
                         <th>年化收益</th>
                         <th>最大回撤</th>
-                        <th>相对持有</th>
+                        <th>相对持有</th><th>子区间收益标准差</th><th>扰动最差收益变化</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
-                        <td colspan="6" class="empty-cell">
+                        <td colspan="8" class="empty-cell">
                           运行回测后，比较收益与风险。
                         </td>
                       </tr>
@@ -479,6 +502,7 @@
                   </select>
                 </div>
                 <div id="detail-summary" class="detail-summary"></div>
+                <div id="robustness-summary" class="research-summary" aria-live="polite"></div>
                 <div class="detail-tabs" id="detail-tabs">
                   <button data-table="trades" class="active">交易盈亏</button
                   ><button data-table="fills">成交记录</button
@@ -486,6 +510,8 @@
                   ><button data-table="yearly_returns">年度收益</button
                   ><button data-table="positions">期末持仓</button
                   ><button data-table="orders">订单</button>
+                  <button data-table="subperiods">独立子区间</button>
+                  <button data-table="sensitivity">参数扰动</button>
                 </div>
                 <div class="table-scroll" id="detail-table">
                   <p class="empty-cell">每一笔交易，都有完整记录。</p>
@@ -501,7 +527,7 @@
                 <svg><use href="#i-info" /></svg>
                 <p>
                   <strong>回测口径</strong> MA
-                  信号在下一有效交易日收盘执行；买入持有在首个有效收盘日建仓。均线预热期保留现金。数据与结果仅存储在本机。
+                  及动量信号在下一有效交易日收盘执行；买入持有在首个有效收盘日建仓。均线预热期保留现金。数据与结果仅存储在本机。
                 </p>
               </div>
             </div>

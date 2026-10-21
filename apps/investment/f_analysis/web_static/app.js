@@ -3,20 +3,25 @@ const API_BASE = location.pathname.startsWith("/investment/") ? "/investment" : 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const NS = "http://www.w3.org/2000/svg";
+const RESEARCH_VERSION = 1;
+const RESTART_MESSAGE = "后台服务版本过旧，无法执行稳定性研究及新策略参数。请在启动服务的终端按 Ctrl+C，再运行 ./start.sh，然后重新运行回测。仅刷新网页不会更新 Python 后台。";
 const labels = {
   buy_hold: "买入持有",
   ma_band: "MA 均线策略",
   fixed_weight: "固定权重再平衡",
+  cross_sectional_momentum: "截面动量策略",
 };
 const colors = {
   buy_hold: "#4266dc",
   ma_band: "#168471",
   fixed_weight: "#b98842",
+  cross_sectional_momentum: "#8b5bb1",
 };
 const colorClasses = {
   buy_hold: "blue-dot",
   ma_band: "green-dot",
   fixed_weight: "amber-dot",
+  cross_sectional_momentum: "purple-dot",
 };
 const stateLabels = {
   queued: "等待运行",
@@ -149,6 +154,14 @@ function formData() {
     fee_rate: Number($("#fee-rate").value) / 100,
     ma_window: Number($("#ma-window").value),
     threshold: Number($("#threshold").value) / 100,
+    buy_threshold: Number($("#threshold").value) / 100,
+    sell_threshold: Number($("#sell-threshold").value) / 100,
+    momentum_lookback: Number($("#momentum-lookback").value),
+    momentum_interval: Number($("#momentum-interval").value),
+    momentum_top_n: Number($("#momentum-top-n").value),
+    subperiod_count: Number($("#subperiod-count").value),
+    sensitivity_enabled: $("#sensitivity-enabled").checked,
+    perturbation: Number($("#perturbation").value) / 100,
     rebalance_frequency: $("#frequency").value,
     data_mode: $("#data-mode").value,
   };
@@ -209,6 +222,12 @@ function updateForm() {
   $("#rebalance-options").hidden = !fixed;
   $("#ma-window").disabled = !ma;
   $("#threshold").disabled = !ma;
+  $("#sell-threshold").disabled = !ma;
+  const momentum = $('input[value="cross_sectional_momentum"]').checked;
+  $("#momentum-options").hidden = !momentum;
+  ["momentum-lookback", "momentum-interval", "momentum-top-n"].forEach(id => $(`#${id}`).disabled = !momentum);
+  $("#momentum-top-n").max = rows.length;
+  $("#perturbation").disabled = !$("#sensitivity-enabled").checked;
   $("#frequency").disabled = !fixed;
   $$("[data-ma]").forEach((button) =>
     button.classList.toggle(
@@ -219,7 +238,7 @@ function updateForm() {
   const w = $("#ma-window").value,
     t = Number($("#threshold").value);
   $("#ma-rule").textContent =
-    `低于 MA${w} 的 ${num(100 - t, 2).replace(/\.00$/, "")}% 买入，高于 ${num(100 + t, 2).replace(/\.00$/, "")}% 卖出。`;
+    `低于 MA${w} 的 ${num(100 - t, 2).replace(/\.00$/, "")}% 买入，高于 ${num(100 + Number($("#sell-threshold").value), 2).replace(/\.00$/, "")}% 卖出。`;
 }
 function applyConfig(config) {
   if (!config) return;
@@ -268,8 +287,16 @@ function applyConfig(config) {
   });
   if (config.fee_rate != null)
     $("#fee-rate").value = Number((config.fee_rate * 100).toFixed(6));
-  if (config.threshold != null)
-    $("#threshold").value = Number((config.threshold * 100).toFixed(6));
+  $("#threshold").value = Number(((config.buy_threshold ?? config.threshold ?? 0.05) * 100).toFixed(6));
+  $("#sell-threshold").value = Number(((config.sell_threshold ?? config.threshold ?? 0.05) * 100).toFixed(6));
+  for (const [id, value] of Object.entries({
+    "momentum-lookback": config.momentum_lookback ?? 126,
+    "momentum-interval": config.momentum_interval ?? 21,
+    "momentum-top-n": config.momentum_top_n ?? 1,
+    "subperiod-count": config.subperiod_count ?? 0,
+    "perturbation": (config.perturbation ?? 0.1) * 100,
+  })) $(`#${id}`).value = value;
+  $("#sensitivity-enabled").checked = config.sensitivity_enabled === true;
   // 旧命令行记录没有行情模式，恢复为缓存优先。
   if (!config.data_mode) $("#data-mode").value = "cache";
   updateForm();
@@ -560,6 +587,8 @@ function renderComparison() {
           : `${item.extra_return_vs_buy_hold >= 0 ? "+" : ""}${num(item.extra_return_vs_buy_hold * 100)} pp`,
         signClass(item.extra_return_vs_buy_hold),
       ],
+      [pct(item.subperiod_return_std), ""],
+      [item.sensitivity_worst_return_delta == null ? "—" : `${num(item.sensitivity_worst_return_delta * 100)} pp`, signClass(item.sensitivity_worst_return_delta)],
     ].forEach(([value, cls]) => row.append(node("td", cls, value)));
     row.tabIndex = 0;
     row.setAttribute("aria-label", `查看${labels[item.strategy]}明细`);
@@ -578,6 +607,19 @@ function renderComparison() {
   });
 }
 const tableSpecs = {
+  subperiods: [
+    ["subperiod", "区间"], ["start", "开始", "date"], ["end", "结束", "date"],
+    ["trading_days", "行情日数"], ["total_return", "收益率", "pct"], ["cagr", "年化收益", "pct"],
+    ["max_drawdown", "最大回撤", "pct"], ["benchmark_return", "持有收益", "pct"],
+    ["excess_return", "超额收益", "pct"], ["total_fees", "手续费", "num"], ["fills", "成交数"],
+  ],
+  sensitivity: [
+    ["parameter", "变动参数", "parameter"], ["base_value", "原值", "parameterValue"], ["value", "扰动值", "parameterValue"],
+    ["total_return", "收益率", "pct"], ["return_delta", "收益变化", "pp"], ["cagr", "年化收益", "pct"],
+    ["max_drawdown", "最大回撤", "pct"], ["subperiod_return_std", "子区间收益标准差", "pct"],
+    ["subperiod_worst_return", "最差子区间收益", "pct"], ["subperiod_positive_fraction", "盈利区间占比", "pct"],
+    ["fills", "成交数"], ["status", "状态"], ["error", "说明"],
+  ],
   trades: [
     ["ticker", "股票"],
     ["entry_date", "买入日期", "date"],
@@ -627,12 +669,25 @@ const tableSpecs = {
     ["status", "状态", "order"],
   ],
 };
+function missingResearchReport(table, strategy, config) {
+  if (table === "subperiods") {
+    return config.subperiod_count > 0
+      ? "本次配置已启用子区间分析，但结果中缺少报告。请重启后台服务并重新运行回测。"
+      : "当前显示的这次回测未启用子区间分析；左侧修改不会更新已有结果，请重新运行回测。";
+  }
+  if (!["ma_band", "cross_sectional_momentum"].includes(strategy))
+    return "此策略没有适用的扰动参数；请在明细策略中选择均线或截面动量策略。";
+  return config.sensitivity_enabled
+    ? "本次配置已启用参数扰动，但结果中缺少报告。请重启后台服务并重新运行回测。"
+    : "当前显示的这次回测未启用参数扰动；勾选后请重新运行回测。";
+}
 function renderDetails() {
   const container = $("#detail-table");
   container.replaceChildren();
   const result = state.result?.results[state.selected];
   if (!result) return;
   const summary = result.summary;
+  renderRobustness(result);
   $("#detail-summary").replaceChildren();
   [
     ["现金", num(summary.final_cash)],
@@ -668,20 +723,26 @@ function renderDetails() {
         ? "此记录没有持仓文件，较早版本可重新运行以生成。"
         : state.table === "trades"
           ? "本次策略没有交易记录。未触发交易时资金保留为现金。"
+          : ["subperiods", "sensitivity"].includes(state.table)
+            ? missingResearchReport(state.table, state.selected, state.result.metadata.config)
           : "暂无记录；较早的命令行结果可能不包含此文件。",
     );
     cell.colSpan = specs.length;
     row.append(cell);
     body.append(row);
   }
-  [...rows].reverse().forEach((item) => {
+  (["subperiods", "sensitivity"].includes(state.table) ? [...rows] : [...rows].reverse()).forEach((item) => {
     const row = node("tr");
     specs.forEach(([key, , type]) => {
       let value = item[key],
         cls = "";
       if (key === "ticker" && !value)
         value = state.result.metadata.config.ticker || "—";
-      if (type === "date")
+      if (type === "parameter")
+        value = {baseline: "基准配置", buy_threshold: "买入偏离比例", sell_threshold: "卖出偏离比例", lookback: "动量回看长度", rebalance_interval: "调仓间隔"}[value] || value;
+      else if (type === "parameterValue") value = value == null ? "—" : item.parameter.endsWith("threshold") ? pct(value) : num(value, 0);
+      else if (type === "pp") value = value == null ? "—" : `${num(value * 100)} pp`;
+      else if (type === "date")
         value = value
           ? String(value).slice(
               0,
@@ -726,6 +787,22 @@ function renderDetails() {
   $("#detail-download").hidden = !rows.length;
   $("#detail-download").href =
     `${API_BASE}/api/runs/${state.result.id}/files/${state.selected}/${state.table}.csv`;
+}
+function renderRobustness(result) {
+  const container = $("#robustness-summary");
+  container.replaceChildren();
+  const report = result.robustness || {};
+  const sub = report.subperiods;
+  if (sub?.count) {
+    container.append(node("p", "", `独立子区间 ${sub.count} 段 · 收益均值 ${pct(sub.total_return.mean)} · 标准差 ${pct(sub.total_return.std)} · 最差 ${pct(sub.total_return.min)} · 最好 ${pct(sub.total_return.max)} · 盈利占比 ${pct(sub.total_return.positive_fraction)}`));
+    container.append(node("p", "", `年化收益标准差 ${pct(sub.cagr.std)} · 回撤标准差 ${pct(sub.max_drawdown.std)} · 跑赢持有占比 ${pct(sub.excess_return.positive_fraction)} · 无交易区间占比 ${pct(sub.no_trade_fraction)}`));
+  }
+  const sensitivity = report.sensitivity;
+  if (sensitivity?.applicable) {
+    container.append(node("p", "", `单因素相对扰动 ±${pct(sensitivity.perturbation)} · 有效变体 ${sensitivity.valid_variants} · 无效变体 ${sensitivity.invalid_variants} · 收益标准差 ${pct(sensitivity.total_return.std)} · 最差收益变化 ${sensitivity.worst_return_delta == null ? "—" : num(sensitivity.worst_return_delta * 100) + " pp"}`));
+  }
+  if (sub?.count || sensitivity?.applicable)
+    container.append(node("p", "", "子区间各自从初始资金回测，使用之前行情预热；标准差采用总体口径。无交易的平稳结果不代表有效，历史稳定性不能证明任意区间或未来有效。固定股票池存在幸存者偏差。"));
 }
 function renderLegend() {
   const container = $("#chart-legend");
@@ -1012,6 +1089,14 @@ async function startRun(event) {
     $("#job-message").textContent = "正在提交回测…";
     $("#progress-bar").value = 0;
     $("#job-percent").textContent = "0%";
+    // 静态资源会即时更新，Python 模块只在进程启动时加载；每次提交前检查实际运行的后台。
+    const service = await api("/api/config");
+    state.token = service.token;
+    state.config.capabilities = service.capabilities;
+    const needsResearch = data.subperiod_count > 0 || data.sensitivity_enabled ||
+      data.strategies.includes("cross_sectional_momentum") || data.buy_threshold !== data.sell_threshold;
+    if (needsResearch && service.capabilities?.research_version !== RESEARCH_VERSION)
+      throw new Error(RESTART_MESSAGE);
     const job = await api("/api/runs", {
       method: "POST",
       body: JSON.stringify(data),
@@ -1256,6 +1341,8 @@ async function boot() {
     if (activeJob) beginPolling(activeJob);
     const view = location.hash.slice(1);
     if (["history", "cache"].includes(view)) navigate(view);
+    if (state.config.capabilities?.research_version !== RESEARCH_VERSION)
+      showError(RESTART_MESSAGE);
   } catch (error) {
     $("#connection-text").textContent = "本机服务未连接";
     $("#connection").classList.add("offline");

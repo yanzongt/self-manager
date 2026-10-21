@@ -24,24 +24,27 @@ import pandas as pd
 from . import (
     BacktestConfig,
     BacktestEngine,
-    BuyAndHold,
-    FixedWeightRebalance,
     MABand,
     StockPool,
 )
 from .analytics import correlation_analysis
+from .research import evaluate_robustness, make_strategy, research_config
 from .reporting import compare_results, plot_comparison, save_result
 from .strategies import FREQUENCIES, allocation
 from scripts import market_data
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STRATEGIES = {
+    "cross_sectional_momentum": "截面动量策略",
     "buy_hold": "买入持有",
     "ma_band": "MA 均线策略",
     "fixed_weight": "固定权重再平衡",
 }
 CATEGORIES = ("web_backtest", "portfolio_backtest", "single_stock_backtest")
 FILES = {
+    "robustness.json",
+    "subperiods.csv",
+    "sensitivity.csv",
     "summary.json",
     "daily_history.csv",
     "positions.csv",
@@ -148,7 +151,11 @@ def normalize_request(data):
     mode = data.get("data_mode", "cache")
     if mode not in ("cache", "refresh", "offline"):
         raise ValueError("请选择有效的行情模式")
+    research = research_config(data)
+    if "cross_sectional_momentum" in names:
+        make_strategy("cross_sectional_momentum", research).initial_targets(pool)
     return {
+        **research,
         "pool": stocks,
         "weights": weights,
         "strategies": names,
@@ -247,10 +254,12 @@ class WebApplication:
 
     def configuration(self):
         return {
+            "capabilities": {"research_version": 1},
             "token": self.token,
             "strategies": STRATEGIES,
             "presets": self.pool_presets(),
             "defaults": {
+                **research_config({}),
                 "pool": [
                     {"ticker": "600036.SS", "name": "招商银行", "weight": 0.5},
                     {"ticker": "002594.SZ", "name": "比亚迪", "weight": 0.5},
@@ -420,16 +429,7 @@ class WebApplication:
                     progress=25 + int(50 * i / len(config["strategies"])),
                     message=f"正在回测：{STRATEGIES[name]}…",
                 )
-                if name == "buy_hold":
-                    strategy = BuyAndHold(config["weights"])
-                elif name == "ma_band":
-                    strategy = MABand(
-                        config["ma_window"], config["threshold"], config["weights"]
-                    )
-                else:
-                    strategy = FixedWeightRebalance(
-                        config["weights"], config["rebalance_frequency"]
-                    )
+                strategy = make_strategy(name, config)
                 result = engine.run(prices, strategy)
                 result.summary["weights"] = config["weights"]
                 result.summary["ma_window"] = (
@@ -438,6 +438,8 @@ class WebApplication:
                 result.summary["threshold"] = (
                     config["threshold"] if name == "ma_band" else None
                 )
+                self._set_job(run_id, message=f"正在评估稳定性：{STRATEGIES[name]}…")
+                evaluate_robustness(engine, prices, strategy, result, config)
                 results[name] = result
                 save_result(path / name, result)
             self._set_job(run_id, progress=85, message="生成对比报告与图表…")
@@ -508,6 +510,8 @@ class WebApplication:
                 "yearly_returns",
                 "positions",
                 "orders",
+                "subperiods",
+                "sensitivity",
             ):
                 table_path = directory / f"{file}.csv"
                 table = (
@@ -520,6 +524,7 @@ class WebApplication:
                 counts[file] = len(table)
                 tables[file] = records(table.tail(500))
             results[name] = {
+                "robustness": read_json(directory / "robustness.json", {}) if (directory / "robustness.json").resolve().is_relative_to(path) else {},
                 "summary": summary,
                 "curve": records(curve),
                 "tables": tables,

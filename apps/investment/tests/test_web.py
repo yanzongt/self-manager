@@ -77,8 +77,8 @@ class WebTests(unittest.TestCase):
         with closing(response):
             return response.status, response.headers, response.read()
 
-    def complete_run(self):
-        status, _, body = self.http("/api/runs", request_data())
+    def complete_run(self, payload=None):
+        status, _, body = self.http("/api/runs", payload or request_data())
         self.assertEqual(status, 202)
         run_id = json.loads(body)["id"]
         deadline = time.monotonic() + 10
@@ -146,6 +146,7 @@ class WebTests(unittest.TestCase):
         status, _, body = self.http("/api/config")
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["token"], self.app.token)
+        self.assertEqual(json.loads(body)["capabilities"]["research_version"], 1)
 
     def test_background_run_uses_real_engine_and_exports_all_results(self):
         run_id = self.complete_run()
@@ -176,6 +177,36 @@ class WebTests(unittest.TestCase):
         self.assertEqual(
             self.http(f"/api/runs/{run_id}/files/ma_band/trades.csv")[0], 200
         )
+
+    def test_momentum_subperiods_and_perturbations_survive_http_and_zip(self):
+        payload = {**request_data(), "strategies": ["ma_band", "cross_sectional_momentum"],
+                   "buy_threshold": 0.03, "sell_threshold": 0.08,
+                   "momentum_lookback": 2, "momentum_interval": 2, "momentum_top_n": 1,
+                   "subperiod_count": 2, "sensitivity_enabled": True, "perturbation": 0.1}
+        run_id = self.complete_run(payload)
+        status, _, body = self.http(f"/api/runs/{run_id}")
+        self.assertEqual(status, 200)
+        detail = json.loads(body)
+        self.assertEqual(detail["metadata"]["config"]["sell_threshold"], 0.08)
+        for name in payload["strategies"]:
+            result = detail["results"][name]
+            self.assertEqual(len(result["tables"]["subperiods"]), 2)
+            self.assertEqual(len(result["tables"]["sensitivity"]), 5)
+            self.assertEqual(result["robustness"]["sensitivity"]["valid_variants"], 4)
+            self.assertIn("subperiod_return_std", result["summary"])
+            for file in ("subperiods.csv", "sensitivity.csv", "robustness.json"):
+                self.assertEqual(self.http(f"/api/runs/{run_id}/files/{name}/{file}")[0], 200)
+        with zipfile.ZipFile(io.BytesIO(self.http(f"/api/runs/{run_id}/download.zip")[2])) as archive:
+            self.assertIn("cross_sectional_momentum/sensitivity.csv", archive.namelist())
+            self.assertIn("ma_band/robustness.json", archive.namelist())
+        self.assertEqual(self.http("/api/runs", {**payload, "momentum_top_n": 3})[0], 400)
+        # The split cannot create one-day runs; report a failed task instead of silently changing the count.
+        bad = self.app.submit({**payload, "subperiod_count": 5})["id"]
+        deadline = time.monotonic() + 5
+        while self.app.job_status(bad)["state"] in ("queued", "running") and time.monotonic() < deadline:
+            time.sleep(0.02)
+        self.assertEqual(self.app.job_status(bad)["state"], "failed")
+        self.assertIn("至少需 2 日", self.app.job_status(bad)["message"])
 
     def test_invalid_payload_and_cross_site_requests_cannot_start_jobs(self):
         self.assertEqual(
