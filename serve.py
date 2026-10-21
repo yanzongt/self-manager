@@ -18,7 +18,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-PAGE = Path(__file__).with_name("pdca_focus.html")
+PROJECT_ROOT = Path(__file__).resolve().parent
+APPS_ROOT = PROJECT_ROOT / "apps"
+PAGE = APPS_ROOT / "pdca" / "index.html"
 
 
 def send_notification(title, body):
@@ -69,6 +71,15 @@ class DataStore:
             raise ValueError("无效项目标签")
         if not isinstance(data.get("records"), list):
             raise ValueError("无效历史记录")
+
+        utilization_hours = data.get("utilizationHours", 8)
+        if (
+            isinstance(utilization_hours, bool)
+            or not isinstance(utilization_hours, (int, float))
+            or not math.isfinite(utilization_hours)
+            or not 0.1 <= utilization_hours <= 24
+        ):
+            raise ValueError("每日目标时长需为 0.1 至 24 小时")
 
         def session(item):
             if not isinstance(item, dict) or not all(
@@ -354,7 +365,7 @@ class Scheduler:
 
 def load_investment():
     """Reuse the backtest application and HTTP routes in this server process."""
-    project = PAGE.parent / "f-analysis"
+    project = APPS_ROOT / "investment"
     sys.path.insert(0, str(project))
     from f_analysis.web_service import WebApplication
     from scripts.web import Handler
@@ -364,7 +375,7 @@ def load_investment():
 
 def create_server(port, scheduler=None, data_path=None, investment=None):
     scheduler = scheduler or Scheduler()
-    store = DataStore(data_path or PAGE.parent / "data" / "pdca.json")
+    store = DataStore(data_path or PROJECT_ROOT / "data" / "pdca.json")
     token = secrets.token_urlsafe(32)
     origin = f"http://127.0.0.1:{port}"
 
@@ -381,7 +392,7 @@ def create_server(port, scheduler=None, data_path=None, investment=None):
                     503,
                     '<!doctype html><html lang="zh-CN"><meta charset="utf-8">'
                     "<title>回测服务未就绪</title><h1>回测服务未就绪</h1>"
-                    "<p>请在项目目录运行 ./start.sh；首次使用请先在 f-analysis 目录执行 uv sync。"
+                    "<p>请在项目目录运行 ./start.sh；首次使用请先执行 ./setup.sh。"
                     '若仍不可用，请查看启动终端中的错误信息。</p><a href="/">返回首页</a></html>'.encode(),
                     "text/html; charset=utf-8",
                 )
@@ -430,7 +441,7 @@ def create_server(port, scheduler=None, data_path=None, investment=None):
             if path in ("/", "/index.html"):
                 return self.reply(
                     200,
-                    PAGE.with_name("index.html").read_bytes(),
+                    (APPS_ROOT / "portal" / "index.html").read_bytes(),
                     "text/html; charset=utf-8",
                 )
             if path == "/api/tools":
@@ -438,7 +449,7 @@ def create_server(port, scheduler=None, data_path=None, investment=None):
             if path in ("/strength/", "/strength_training_tracker.html"):
                 return self.reply(
                     200,
-                    PAGE.with_name("strength_training_tracker.html").read_bytes(),
+                    (APPS_ROOT / "strength" / "index.html").read_bytes(),
                     "text/html; charset=utf-8",
                 )
             if path in ("/pdca/", "/pdca_focus.html"):
@@ -547,7 +558,7 @@ def main():
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument(
-        "--data-file", type=Path, default=PAGE.parent / "data" / "pdca.json"
+        "--data-file", type=Path, default=PROJECT_ROOT / "data" / "pdca.json"
     )
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
@@ -557,7 +568,7 @@ def main():
         investment = load_investment()
     except ImportError as exc:
         print(
-            f"回测服务未加载：{exc}。请使用 ./start.sh；首次使用先在 f-analysis 目录运行 uv sync。",
+            f"回测服务未加载：{exc}。请使用 ./start.sh；首次使用先执行 ./setup.sh。",
             flush=True,
         )
     try:

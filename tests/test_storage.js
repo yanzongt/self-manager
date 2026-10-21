@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const KEY = 'focus_pdca_singlefile_v1';
-const source = fs.readFileSync(`${__dirname}/pdca_focus.html`, 'utf8').split('<script>')[1].split('</script>')[0];
+const source = fs.readFileSync(`${__dirname}/../apps/pdca/index.html`, 'utf8').split('<script>')[1].split('</script>')[0];
 const start = Date.UTC(2026, 9, 8, 8), minute = 60000;
 const empty = () => ({tags:['工作'], records:[], active:null, workItems:[], pomoSettings:{workMinutes:25,breakMinutes:5,autoSwitch:true}, pomodoro:null});
 const settle = async () => { for(let i=0;i<8;i++) await new Promise(resolve=>setImmediate(resolve)); };
@@ -146,6 +146,39 @@ async function main(){
   assert.equal(historyDisk.data.workItems[0].urgent,false);
   assert.equal(historyDisk.data.workItems[0].title,'调整事项');
   assert.equal(historyDisk.data.records.length,23);
-  console.log('Page checks passed: migration, authoritative file data, comments, Work/Break starts, pagination/date/tag filters, task moves, refresh, import, failed writes/retry, conflicts, unavailable service and legacy export.');
+  const utilizationData=empty();
+  utilizationData.records=[
+    {id:'u1', purpose:'工作', tag:'工作', startedAt:start - 2*86400000, actualMinutes:240},
+    {id:'u2', purpose:'阅读', tag:'学习', startedAt:start - 2*86400000, actualMinutes:240, result:'partial'},
+    {id:'u3', purpose:'当天记录', tag:'工作', startedAt:start, actualMinutes:600}
+  ];
+  const utilizationDisk=server(utilizationData), utilizationPage=page(utilizationDisk); await settle();
+  const utilizationSvg=()=>utilizationPage.element('utilizationChart').innerHTML;
+  assert.equal(utilizationPage.element('utilizationHours').value,8);
+  assert.match(utilizationSvg(),/data-date="2026-10-06" data-percent="100"/);
+  assert.match(utilizationSvg(),/data-date="2026-10-07" data-percent="0"/);
+  assert.match(utilizationSvg(),/data-date="2026-10-08" data-percent="125"/);
+  assert.match(utilizationPage.element('utilizationSummary').textContent,/今日 125%/);
+  utilizationPage.element('utilizationRange').value='all'; utilizationPage.element('utilizationRange').onchange();
+  assert.equal((utilizationSvg().match(/<circle/g)||[]).length,3);
+  utilizationPage.element('utilizationHours').value='16'; await utilizationPage.element('utilizationHours').onchange();
+  assert.equal(utilizationDisk.data.utilizationHours,16);
+  assert.match(utilizationSvg(),/data-date="2026-10-06" data-percent="50"/);
+  assert.match(utilizationPage.element('utilizationSummary').textContent,/今日 62.5%/);
+  const utilizationReload=page(utilizationDisk); await settle();
+  assert.equal(utilizationReload.element('utilizationHours').value,16);
+  for (const invalid of ['0', '-1', '25', 'not a number']) {
+    utilizationReload.element('utilizationHours').value=invalid;
+    await utilizationReload.element('utilizationHours').onchange();
+    assert.equal(utilizationDisk.data.utilizationHours,16);
+    assert.equal(utilizationReload.element('utilizationHours').value,16);
+  }
+  utilizationDisk.failWrite=true;
+  utilizationReload.element('utilizationHours').value='12'; await utilizationReload.element('utilizationHours').onchange();
+  assert.equal(utilizationDisk.data.utilizationHours,16);
+  assert.equal((await utilizationReload.export()).data.utilizationHours,12);
+  utilizationDisk.failWrite=false; await utilizationReload.element('retrySave').onclick();
+  assert.equal(utilizationDisk.data.utilizationHours,12);
+  console.log('Page checks passed: migration, authoritative file data, comments, Work/Break starts, pagination/date/tag filters, task moves, daily utilization/settings, refresh, import, failed writes/retry, conflicts, unavailable service and legacy export.');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

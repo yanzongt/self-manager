@@ -1,4 +1,4 @@
-// Run with PLAYWRIGHT_CORE=/path/to/playwright-core node test_strength.js.
+// Run with PLAYWRIGHT_CORE=/path/to/playwright-core node tests/test_strength.js.
 // CHROME_PATH may override the local Chrome executable.
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
@@ -6,7 +6,7 @@ const { pathToFileURL } = require('node:url');
 const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_CORE || 'playwright');
 const KEY = 'strengthTracker_v1';
-const url = pathToFileURL(path.join(__dirname, 'strength_training_tracker.html')).href;
+const url = pathToFileURL(path.join(__dirname, '../apps/strength/index.html')).href;
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox'] });
   const errors = [], dialogs = [];

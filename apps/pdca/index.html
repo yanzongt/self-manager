@@ -805,6 +805,16 @@
             color: #8193a8
         }
 
+        .utilization-panel { margin-bottom: 17px; }
+        .utilization-heading { flex-wrap: wrap; align-items: end; }
+        .utilization-controls { display: flex; flex-wrap: wrap; gap: 12px; }
+        .utilization-controls label { display: grid; gap: 5px; font-size: 12px; color: #a9b9ca; }
+        .utilization-controls .control { width: 142px; min-width: 0; padding: 7px 9px; }
+        .utilization-chart { overflow-x: auto; }
+        .utilization-chart svg { display: block; width: 100%; height: 235px; }
+        .utilization-chart text { fill: #8ea1b6; font-size: 11px; }
+        .utilization-chart circle:focus { outline: 2px solid #e9bd7c; }
+
         .history-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 16px 0; }
         .history-filters label { display: grid; gap: 6px; font-size: 12px; color: #a9b9ca; min-width: 130px; }
         .history-filters .control { min-width: 0; }
@@ -975,6 +985,18 @@
                         <div class="chart" id="trendChart"></div>
                     </section>
                 </div>
+                <section class="panel chart-panel utilization-panel" aria-labelledby="utilizationTitle">
+                    <div class="chart-title utilization-heading">
+                        <h2 id="utilizationTitle">每日时间利用率</h2>
+                        <div class="utilization-controls">
+                            <label for="utilizationHours">每日目标（小时）<input id="utilizationHours" class="control" type="number" min="0.1" max="24" step="any" value="8"></label>
+                            <label for="utilizationRange">查看范围<select id="utilizationRange" class="control"><option value="7">最近7天</option><option value="30" selected>最近30天</option><option value="90">最近90天</option><option value="all">全部记录至今</option></select></label>
+                        </div>
+                    </div>
+                    <p id="utilizationSummary" class="muted" role="status" aria-live="polite"></p>
+                    <div class="utilization-chart" id="utilizationChart"></div>
+                    <p class="hint">利用率 = 当天已记录的实际时长 ÷ 每日目标时长。汇总全部标签的已复盘会话，按开始日期归属；未记录的日期按 0% 计，超过目标可高于 100%。修改目标后，整条曲线按新目标重新计算。悬停或聚焦数据点可查看当日详情。</p>
+                </section>
                 <section class="panel">
                     <div class="history-actions">
                         <h2>03 / 历史记录</h2>
@@ -1049,7 +1071,7 @@
             'use strict';
             const KEY = 'focus_pdca_singlefile_v1';
             const $ = id => document.getElementById(id);
-            const defaults = { tags: ['学习', '工作', '娱乐', '运动', '阅读', '其他'], records: [], active: null, workItems: [], pomoSettings: { workMinutes: 25, breakMinutes: 5, autoSwitch: true }, pomodoro: null };
+            const defaults = { tags: ['学习', '工作', '娱乐', '运动', '阅读', '其他'], records: [], active: null, workItems: [], utilizationHours: 8, pomoSettings: { workMinutes: 25, breakMinutes: 5, autoSwitch: true }, pomodoro: null };
             let historyPage = 1;
             let db = structuredClone(defaults), result = null, alerted = false, toastTimeout = null;
             let storageReady = false, revision = null, saveQueue = Promise.resolve(), pendingSaves = 0, dirty = false, conflict = false, ticking = false;
@@ -1074,7 +1096,8 @@
                     await connectNative(); tick();
                 } catch (e) { storageReady = false; storageStatus('读取失败：' + e.message + '。请检查本地服务；现有文件不会被覆盖。'); }
             }
-            function normalizeDb(o) { const independent = normalizePomodoro(Object.hasOwn(o, 'pomodoro') ? o.pomodoro : o.active?.pomodoro); return { ...structuredClone(defaults), ...o, workItems: Array.isArray(o.workItems) ? o.workItems.filter(w => w && typeof w.id === 'string' && typeof w.title === 'string' && typeof w.important === 'boolean' && typeof w.urgent === 'boolean') : [], pomoSettings: normalizePomoSettings(o.pomoSettings), pomodoro: independent && !independent.stopped ? { id: independent.id, ...nativePomodoro(independent) } : null, active: o.active ? { ...o.active, pomodoro: normalizePomodoro(o.active.pomodoro) } : null, records: o.records.map(r => ({ ...r, pomodoro: normalizePomodoro(r.pomodoro) })) } }
+            function normalizeUtilizationHours(value) { return typeof value === 'number' && Number.isFinite(value) && value >= 0.1 && value <= 24 ? value : 8; }
+            function normalizeDb(o) { const independent = normalizePomodoro(Object.hasOwn(o, 'pomodoro') ? o.pomodoro : o.active?.pomodoro); return { ...structuredClone(defaults), ...o, utilizationHours: normalizeUtilizationHours(o.utilizationHours), workItems: Array.isArray(o.workItems) ? o.workItems.filter(w => w && typeof w.id === 'string' && typeof w.title === 'string' && typeof w.important === 'boolean' && typeof w.urgent === 'boolean') : [], pomoSettings: normalizePomoSettings(o.pomoSettings), pomodoro: independent && !independent.stopped ? { id: independent.id, ...nativePomodoro(independent) } : null, active: o.active ? { ...o.active, pomodoro: normalizePomodoro(o.active.pomodoro) } : null, records: o.records.map(r => ({ ...r, pomodoro: normalizePomodoro(r.pomodoro) })) } }
             function normalizePomodoro(p) { if (!p || !['work', 'break'].includes(p.phase) || !Number.isFinite(p.startedAt) || !Number.isFinite(p.phaseEndsAt) || p.phaseEndsAt <= p.startedAt) return null; const settings = normalizePomoSettings(p); return { ...p, id: typeof p.id === 'string' ? p.id : makeId(), workMinutes: settings.workMinutes, breakMinutes: settings.breakMinutes, auto: p.auto === true, waiting: p.waiting === true, stopped: p.stopped === true, records: Array.isArray(p.records) ? p.records.filter(r => r && ['work', 'break'].includes(r.phase) && Number.isFinite(r.startedAt) && Number.isFinite(r.endedAt) && r.endedAt >= r.startedAt) : [] } }
             function normalizePomoSettings(s) { const minutes = (v, f) => Number.isInteger(v) && v >= 1 && v <= 1440 ? v : f; return { workMinutes: minutes(s?.workMinutes, 25), breakMinutes: minutes(s?.breakMinutes, 5), autoSwitch: typeof s?.autoSwitch === 'boolean' ? s.autoSwitch : true } }
             function save() {
@@ -1224,6 +1247,54 @@
             function chartEmpty(t) { return `<div class="empty">${esc(t)}</div>` }
             function barChart() { const filter = $('periodFilter').value; const today = new Date(); today.setHours(0, 0, 0, 0); const floor = filter === 'today' ? today.getTime() : filter === 'week' ? today.getTime() - 6 * 86400000 : -Infinity; const rows = db.records.filter(r => r.startedAt >= floor), m = new Map(); for (const r of rows) m.set(r.tag, (m.get(r.tag) || 0) + duration(r)); const items = [...m].sort((a, b) => b[1] - a[1]).slice(0, 7), host = $('tagChart'); if (!items.length) { host.innerHTML = chartEmpty('该时间范围暂无数据'); return } const max = Math.max(...items.map(x => x[1]), 1); const totalH = Math.max(205, items.length * 29 + 12); let nodes = ''; items.forEach(([tag, v], i) => { const y = 8 + i * 29, w = 195 * v / max; nodes += `<text x="0" y="${y + 12}">${svgText(tag.length > 7 ? tag.slice(0, 7) + '…' : tag)}</text><rect x="93" y="${y}" width="195" height="15" rx="5" fill="#293949"/><rect x="93" y="${y}" width="${w}" height="15" rx="5" fill="#61bca3"/><text x="296" y="${y + 12}">${formatMin(v)}m</text>` }); host.innerHTML = `<svg viewBox="0 0 350 ${totalH}" preserveAspectRatio="xMinYMin meet" role="img" aria-label="各项目累计使用分钟数">${nodes}</svg>` }
             function lineChart() { const tag = $('trendTag').value, records = db.records.filter(r => tag === 'all' || r.tag === tag), host = $('trendChart'); if (!records.length) { host.innerHTML = chartEmpty('该项目暂无历史数据'); return } const perDay = new Map(); for (const r of records) { const d = day(r.startedAt); perDay.set(d, (perDay.get(d) || 0) + duration(r)) } const keys = [...perDay.keys()].sort(); let start = new Date(keys[0] + 'T00:00:00'), end = new Date(); end.setHours(0, 0, 0, 0); if (start > end) start = end; const span = Math.min(30, Math.round((end - start) / 86400000) + 1); start = new Date(end); start.setDate(end.getDate() - span + 1); let arr = []; for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) { const label = day(d); arr.push({ label, value: perDay.get(label) || 0 }) } const max = Math.max(...arr.map(a => a.value), 1), left = 35, right = 338, top = 15, bottom = 175; const x = i => left + (right - left) * (arr.length === 1 ? .5 : i / (arr.length - 1)); const y = v => bottom - (bottom - top) * v / max; const pts = arr.map((a, i) => `${x(i)},${y(a.value)}`).join(' '); let paths = ''; for (let i = 0; i < 4; i++) { const yy = top + (bottom - top) * i / 3; paths += `<line x1="35" y1="${yy}" x2="338" y2="${yy}" stroke="#324252" stroke-dasharray="3 4"/><text x="30" y="${yy + 4}" text-anchor="end">${formatMin(max * (1 - i / 3))}</text>` } const ticks = [0, Math.floor((arr.length - 1) / 2), arr.length - 1].filter((v, i, a) => a.indexOf(v) === i); for (const i of ticks) paths += `<text x="${x(i)}" y="197" text-anchor="middle">${arr[i].label.slice(5)}</text>`; host.innerHTML = `<svg viewBox="0 0 350 210" preserveAspectRatio="none" role="img" aria-label="最近最多30天按日期的使用时间折线图">${paths}<polyline points="${pts}" fill="none" stroke="#77d6ba" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>${arr.map((a, i) => `<circle cx="${x(i)}" cy="${y(a.value)}" r="2.6" fill="#a9eed9"><title>${a.label}：${formatMin(a.value)} 分钟</title></circle>`).join('')}</svg>` }
+            function utilizationChart() {
+                const hours = db.utilizationHours, perDay = new Map();
+                for (const record of db.records) {
+                    const minutes = duration(record), date = day(record.startedAt);
+                    if (Number.isFinite(minutes) && minutes >= 0) perDay.set(date, (perDay.get(date) || 0) + minutes);
+                }
+                const today = new Date(); today.setHours(0, 0, 0, 0);
+                const todayKey = day(today), range = $('utilizationRange').value;
+                const start = new Date(today);
+                if (range === 'all') {
+                    const first = [...perDay.keys()].filter(date => date <= todayKey).sort()[0];
+                    if (first) start.setTime(new Date(first + 'T00:00:00').getTime());
+                } else start.setDate(start.getDate() - (Number(range) || 30) + 1);
+                const points = [];
+                for (let date = new Date(start); date <= today; date.setDate(date.getDate() + 1)) {
+                    const label = day(date), minutes = perDay.get(label) || 0;
+                    points.push({ label, minutes, percent: minutes / (hours * 60) * 100 });
+                }
+                const percent = value => `${Number(value.toFixed(1))}%`;
+                const todayMinutes = perDay.get(todayKey) || 0, average = points.reduce((sum, point) => sum + point.percent, 0) / points.length;
+                $('utilizationSummary').textContent = `今日 ${percent(todayMinutes / (hours * 60) * 100)} · 已记录 ${formatMin(todayMinutes / 60)} / ${hours} 小时；图示 ${points.length} 天平均 ${percent(average)}（含未记录日）。`;
+                const max = Math.max(100, Math.ceil(points.reduce((value, point) => Math.max(value, point.percent), 0) / 25) * 25);
+                const width = Math.max(320, $('utilizationChart').clientWidth || 720);
+                const left = 52, right = width - 24, top = 22, bottom = 190;
+                const x = index => left + (right - left) * (points.length === 1 ? 0.5 : index / (points.length - 1));
+                const y = value => bottom - (bottom - top) * value / max;
+                let grid = '';
+                for (let i = 0; i <= 4; i++) {
+                    const value = max * i / 4, yy = y(value);
+                    grid += `<line x1="${left}" y1="${yy}" x2="${right}" y2="${yy}" stroke="#324252" stroke-dasharray="3 4"/><text x="44" y="${yy + 4}" text-anchor="end">${percent(value)}</text>`;
+                }
+                grid += `<line x1="${left}" y1="${y(100)}" x2="${right}" y2="${y(100)}" stroke="#e9bd7c" stroke-dasharray="6 4"/><text x="${right}" y="${y(100) - 8}" text-anchor="end" fill="#e9bd7c">目标 100%</text>`;
+                const ticks = [0, Math.floor((points.length - 1) / 2), points.length - 1].filter((v, i, values) => values.indexOf(v) === i);
+                grid += ticks.map(index => `<text x="${x(index)}" y="215" text-anchor="${index === 0 && points.length > 1 ? 'start' : index === points.length - 1 && points.length > 1 ? 'end' : 'middle'}">${points[index].label}</text>`).join('');
+                $('utilizationChart').innerHTML = `<svg viewBox="0 0 ${width} 235" role="img" aria-label="每日时间利用率折线图，目标每天 ${hours} 小时"><title>每日时间利用率</title>${grid}<polyline points="${points.map((point, index) => `${x(index)},${y(point.percent)}`).join(' ')}" fill="none" stroke="#77d6ba" stroke-width="2.5" stroke-linejoin="round"/>${points.map((point, index) => {
+                    const detail = `${point.label}：已记录 ${formatMin(point.minutes / 60)} 小时 / 目标 ${hours} 小时，利用率 ${percent(point.percent)}`;
+                    return `<circle cx="${x(index)}" cy="${y(point.percent)}" r="${points.length > 40 ? 2 : 3.5}" fill="#a9eed9" tabindex="0" aria-label="${detail}" data-date="${point.label}" data-percent="${point.percent}"><title>${detail}</title></circle>`;
+                }).join('')}</svg>`;
+            }
+            $('utilizationRange').onchange = utilizationChart;
+            window.addEventListener('resize', () => { if (storageReady) utilizationChart(); });
+            $('utilizationHours').onchange = async () => {
+                const value = Number($('utilizationHours').value);
+                if (!Number.isFinite(value) || value < 0.1 || value > 24) { $('utilizationHours').value = db.utilizationHours; toast('每日目标时长需为 0.1 至 24 小时'); return; }
+                db.utilizationHours = value;
+                utilizationChart();
+                if (await save()) toast('每日目标时长已保存，利用率已重新计算');
+            };
             function history() {
                 const selected = $('historyTag').value;
                 const tags = [...new Set([...db.tags, ...db.records.map(r => r.tag)])];
@@ -1246,7 +1317,7 @@
             $('historyPrev').onclick = () => { historyPage--; history(); };
             $('historyNext').onclick = () => { historyPage++; history(); };
             $('historyReset').onclick = () => { for (const id of ['historyFrom', 'historyTo', 'historyTag']) $(id).value = ''; historyPage = 1; history(); };
-            function render() { updateTags(); stat(); barChart(); lineChart(); history(); renderSession(); renderComments(); renderPomodoro(); renderWorkItems() }
+            function render() { updateTags(); stat(); barChart(); lineChart(); $('utilizationHours').value = db.utilizationHours; utilizationChart(); history(); renderSession(); renderComments(); renderPomodoro(); renderWorkItems() }
             $('startForm').addEventListener('submit', async e => { e.preventDefault(); prepareAudio(); if (db.active) return; const purpose = $('purpose').value.trim(), tag = $('tag').value, n = Number($('minutes').value); if (!purpose || !tag || !Number.isInteger(n) || n < 1 || n > 1440) { toast('请填写目的、标签和1至1440分钟的预算'); return } db.active = { id: makeId(), purpose, tag, budgetMinutes: n, extraMinutes: 0, startedAt: Date.now(), extensions: [], comments: [] }; const workItem = db.workItems.find(w => w.id === $('workItemSelect').value); if (workItem) { db.active.workItemId = workItem.id; db.active.workItemTitle = workItem.title } alerted = false; if (!await save()) { render(); return; } render(); toast('计时已开始') });
             $('presets').addEventListener('click', e => { const b = e.target.closest('[data-min]'); if (!b) return; $('minutes').value = b.dataset.min; document.querySelectorAll('#presets button').forEach(x => x.classList.toggle('active', x === b)) }); $('minutes').addEventListener('input', () => document.querySelectorAll('#presets button').forEach(x => x.classList.toggle('active', x.dataset.min === $('minutes').value)));
             $('newTag').onclick = async () => { const t = prompt('输入新项目标签（不超过20个字符）'); if (t === null) return; const v = t.trim(); if (!v || v.length > 20) { toast('标签不能为空且最多20字符'); return } if (!db.tags.includes(v)) db.tags.push(v); if (!await save()) { render(); return; } updateTags(); $('tag').value = v; render() };

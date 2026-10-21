@@ -2,6 +2,8 @@
 
 基于 Yahoo Finance 复权日线的股票池与策略分析框架。核心由 `StockPool`（可交易股票池）、策略、统一回测引擎和绩效分析模块组成。支持单只或多只股票，内置买入持有、MA 偏离与固定权重再平衡；原有相关性分析、参数研究和组合扫描入口继续可用。
 
+本目录保留原 `f-analysis` 的 Python 包、命令行入口和测试。统一使用时，在仓库根目录执行 `./setup.sh` 和 `./start.sh`，依赖安装到根目录 `.venv/`；本节也支持单独安装本模块环境。下文中的“项目根目录”指 `apps/investment/`；个人工具统一入口见[仓库说明](../../README.md)。
+
 ## 环境配置
 
 - Python 3.13 或更高版本，项目通过 `.python-version` 默认选择 3.13。
@@ -38,7 +40,7 @@ uv sync --locked
 uv run --locked python main.py web --open
 ```
 
-也可从上级目录运行 `./start.sh`，通过个人主页的 `/investment/` 入口使用回测；统一服务器默认地址为 **http://127.0.0.1:8765**，无需另开本节的独立服务。
+也可从仓库根目录运行 `./start.sh`，通过个人主页的 `/investment/` 入口使用回测；统一服务器默认地址为 **http://127.0.0.1:8765**，无需另开本节的独立服务。
 
 独立启动时，浏览器访问 **http://127.0.0.1:8766**。保持终端运行，按 `Ctrl+C` 停止服务。若不希望自动打开浏览器，去掉 `--open`。端口被占用时可指定 `--port 8877`；也支持 `uv run --locked python -m scripts.web --port 8877`。
 
@@ -132,7 +134,7 @@ uv run --locked python main.py rebalance_analysis --no-show --output-dir outputs
 ## 目录结构
 
 ```text
-f-analysis/
+apps/investment/
 ├── README.md
 ├── main.py                       # 统一命令入口
 ├── pyproject.toml                # 项目信息及依赖范围

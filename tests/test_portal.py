@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 from serve import create_server
 
-PROJECT = Path(__file__).resolve().parent
-sys.path.insert(0, str(PROJECT / "f-analysis"))
-sys.path.insert(0, str(PROJECT / "f-analysis/tests"))
+PROJECT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT / "apps/investment"))
+sys.path.insert(0, str(PROJECT / "apps/investment/tests"))
 from scripts.web import Handler
 from test_web import WebTests
 

@@ -176,6 +176,16 @@ class DataStoreTests(unittest.TestCase):
             "pomodoro": None,
         }
 
+    def test_daily_utilization_target_persists_and_rejects_invalid_values(self):
+        result = self.store.write({**self.data, "utilizationHours": 7.5}, None)
+        self.assertEqual(DataStore(self.path).read()["data"]["utilizationHours"], 7.5)
+        previous = self.path.read_bytes()
+        for value in (0, -1, 25, True, "8", None, float("inf"), float("nan")):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                self.store.write({**self.data, "utilizationHours": value}, result["revision"])
+            self.assertEqual(self.path.read_bytes(), previous)
+        DataStore.validate(self.data)  # Old backups without the setting stay valid.
+
     def test_save_backup_restart_and_idempotent_retry(self):
         self.assertEqual(self.store.read(), {"data": None, "revision": None})
         first = self.store.write(self.data, None)

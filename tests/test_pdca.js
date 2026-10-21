@@ -1,4 +1,4 @@
-// PLAYWRIGHT_CORE=/path/to/playwright-core node test_pdca.js
+// PLAYWRIGHT_CORE=/path/to/playwright-core node tests/test_pdca.js
 // Uses a temporary data file and never touches the personal PDCA records.
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
@@ -10,8 +10,8 @@ const fixture = {
   records: Array.from({ length: 23 }, (_, i) => ({
     id: `record-${i}`, purpose: `记录 ${i}`, tag: i === 22 ? '归档标签' : i % 2 ? '学习' : '工作',
     startedAt: Date.parse('2026-10-01T08:00:00+08:00') + i * 86400000,
-    endedAt: Date.parse('2026-10-01T08:05:00+08:00') + i * 86400000,
-    plannedMinutes: 5, actualMinutes: 5, result: 'completed', review: '已复盘',
+    endedAt: Date.parse('2026-10-01T08:00:00+08:00') + i * 86400000 + (i === 10 ? 480 : i === 11 ? 600 : 5) * 60000,
+    plannedMinutes: 5, actualMinutes: i === 10 ? 480 : i === 11 ? 600 : 5, result: 'completed', review: '已复盘',
   })),
   workItems: [{id: 'item', title: '需要调整的工作', important: true, urgent: true, done: false, createdAt: Date.now()}],
 };
@@ -26,7 +26,7 @@ with tempfile.TemporaryDirectory() as folder:
     try: server.serve_forever()
     except KeyboardInterrupt: pass
     finally: server.server_close()
-`], {cwd: __dirname, stdio: ['pipe', 'pipe', 'pipe']});
+`], {cwd: require('node:path').resolve(__dirname, '..'), stdio: ['pipe', 'pipe', 'pipe']});
 server.stdin.end(JSON.stringify(fixture));
 let diagnostic = '';
 server.stderr.on('data', value => { diagnostic += value; });
@@ -42,12 +42,29 @@ server.stderr.on('data', value => { diagnostic += value; });
     browser = await chromium.launch({executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox']});
     const context = await browser.newContext({viewport: {width: 1440, height: 1000}, timezoneId: 'Asia/Shanghai'});
     const page = await context.newPage(), errors = [];
+    await page.clock.install({time: new Date('2026-10-20T16:00:00+08:00')});
     page.on('pageerror', e => errors.push(e.message));
     page.on('dialog', d => d.accept());
     const data = () => page.evaluate(async () => (await (await fetch('/api/data', {headers: {'X-PDCA-Token': window.PDCA_NATIVE_TOKEN}})).json()).data);
     const saved = () => page.waitForFunction(() => document.querySelector('#storageStatus').textContent.startsWith('已保存'));
     await page.goto(url + '/pdca/');
     await page.waitForFunction(() => !document.querySelector('#appContent').inert);
+    assert.equal(await page.locator('#utilizationHours').inputValue(), '8');
+    assert.equal(await page.locator('#utilizationChart [data-date="2026-10-11"]').getAttribute('data-percent'), '100');
+    assert.equal(await page.locator('#utilizationChart [data-date="2026-10-12"]').getAttribute('data-percent'), '125');
+    assert.equal(await page.locator('#utilizationChart [data-date="2026-09-30"]').getAttribute('data-percent'), '0');
+    await page.locator('#utilizationRange').selectOption('7');
+    assert.equal(await page.locator('#utilizationChart circle').count(), 7);
+    await page.locator('#utilizationRange').selectOption('all');
+    assert.equal(await page.locator('#utilizationChart circle').count(), 20);
+    await page.locator('#utilizationHours').fill('16'); await page.locator('#utilizationHours').press('Tab'); await saved();
+    assert.equal((await data()).utilizationHours, 16);
+    assert.equal(await page.locator('#utilizationChart [data-date="2026-10-11"]').getAttribute('data-percent'), '50');
+    await page.reload(); await page.waitForFunction(() => !document.querySelector('#appContent').inert);
+    assert.equal(await page.locator('#utilizationHours').inputValue(), '16');
+    await page.locator('#utilizationHours').fill('0'); await page.locator('#utilizationHours').press('Tab');
+    assert.equal(await page.locator('#utilizationHours').inputValue(), '16');
+    if (process.env.PDCA_SCREENSHOT_PREFIX) await page.locator('#utilizationTitle').locator('xpath=ancestor::section[1]').screenshot({path: process.env.PDCA_SCREENSHOT_PREFIX + '-utilization-desktop.png'});
     assert.equal(await page.locator('#historyBody tr').count(), 10);
     await page.locator('#historyNext').click();
     assert.equal(await page.locator('#historyPage').textContent(), '2 / 3 页');
@@ -112,11 +129,12 @@ server.stderr.on('data', value => { diagnostic += value; });
     await page.locator('#historyTag').selectOption('工作');
     assert.equal(await page.locator('#historyPage').textContent(), '1 / 2 页');
     if (process.env.PDCA_SCREENSHOT_PREFIX) {
+      await page.locator('#utilizationTitle').locator('xpath=ancestor::section[1]').screenshot({path: process.env.PDCA_SCREENSHOT_PREFIX + '-utilization-mobile.png'});
       await page.locator('#historyFrom').locator('xpath=ancestor::section[1]').screenshot({path: process.env.PDCA_SCREENSHOT_PREFIX + '-history.png'});
       await page.locator('#workQuadrants').screenshot({path: process.env.PDCA_SCREENSHOT_PREFIX + '-work.png'});
     }
     assert.deepEqual(errors, []);
-    console.log('PDCA browser checks passed: Work/Break starts, review controls, pagination, date/tag filters, full backup, last-page deletion, dropdown and drag moves, edit, refresh persistence and mobile layout.');
+    console.log('PDCA browser checks passed: daily utilization/target persistence/ranges, Work/Break starts, review controls, pagination, date/tag filters, full backup, last-page deletion, dropdown and drag moves, edit, refresh persistence and mobile layout.');
   } finally {
     if (browser) await browser.close();
     server.kill('SIGINT');
