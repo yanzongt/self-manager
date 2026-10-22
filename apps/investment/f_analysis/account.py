@@ -63,6 +63,29 @@ class Account:
     def equity(self, marks):
         return self.cash + self.market_value(marks)
 
+    def execute_budgets(self, orders, quotes, date):
+        """固定含费预算买入，不因原持仓价格漂移触发卖出。"""
+        required = sum(order["budget"] for order in orders)
+        scale = min(1.0, self.cash / required) if required else 1.0
+        for order in orders:
+            ticker = order["ticker"]
+            quantity = order["budget"] * scale / ((1 + self.fee_rate) * quotes[ticker])
+            if quantity > 0:
+                self.fill(ticker, quantity, quotes[ticker], date, order["signal_date"])
+            order.update(execution_date=date, filled_quantity=quantity,
+                         status="insufficient_cash" if quantity == 0 else
+                         "filled" if scale >= 1 - 1e-12 else "partial")
+        self.cash = max(0.0, self.cash)
+
+    def execute_fraction_sells(self, orders, quotes, date):
+        for order in orders:
+            ticker = order["ticker"]
+            quantity = self.positions[ticker].quantity * order["sell_fraction"]
+            if quantity > 0:
+                self.fill(ticker, -quantity, quotes[ticker], date, order["signal_date"])
+            order.update(execution_date=date, filled_quantity=-quantity,
+                         status="filled" if quantity > 0 else "no_change")
+
     def fill(self, ticker, signed_quantity, price, date, signal_date):
         p = self.positions[ticker]
         quantity = abs(signed_quantity)

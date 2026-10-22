@@ -202,6 +202,15 @@
                     ><span class="option-check"></span
                   ></label>
                   <div id="ma-options" class="strategy-settings">
+                    <div class="field"><label for="ma-trade-mode">买卖执行方式</label><select id="ma-trade-mode"><option value="full_position">全仓进出（原模式）</option><option value="independent">独立买卖（连续加仓、分批卖出）</option></select></div>
+                    <div id="ma-independent-options" hidden>
+                      <div class="field"><label for="ma-buy-budget-mode">买入预算方式</label><select id="ma-buy-budget-mode"><option value="fixed">固定买入总预算</option><option value="cash_plus_extra">全部可用现金＋额外追加金额</option></select></div>
+                      <div id="ma-extra-options" hidden><div class="field"><label for="ma-extra-amount">每个买入日额外追加金额 <span>可设为 0</span></label><input id="ma-extra-amount" type="number" min="0" step="any" value="1000" required></div><p class="rule-note">实际成交日先卖后买，用全部可用现金加额外金额买入；当天多只股票共用一次追加，按触发股票的相对权重分配。无可成交买单时不追加。</p></div>
+                      <div class="field" id="ma-funding-field"><label for="ma-funding-mode">买入资金来源</label><select id="ma-funding-mode"><option value="cash">仅使用账户现金</option><option value="auto_contribute">现金不足时自动追加资金</option></select></div>
+                      <div class="field" id="ma-fixed-budget-field"><label for="ma-buy-amount">每次买入总预算 <span>含费用，按池权重分配</span></label><input id="ma-buy-amount" type="number" value="1000" min="0.01" step="any" required></div>
+                      <div class="field"><label for="ma-sell-fraction">每次卖出持仓比例</label><div class="input-unit"><input id="ma-sell-fraction" type="number" value="25" min="0.01" max="100" step="any" required><span>%</span></div></div>
+                      <p class="rule-note">每个收盘日独立检查买卖条件，满足买入条件可连续加仓，满足卖出条件可连续减仓，下一有效收盘成交。资金来源可选择仅使用账户现金，或自动追加不足金额以足额买入；无持仓时忽略卖出条件，不做空。自动追加会计入投入本金，收益和回撤剔除入金影响。</p>
+                    </div>
                     <div class="field">
                       <label for="ma-window">均线窗口 <span>交易日</span></label
                       ><input
@@ -234,10 +243,12 @@
                         /><span>%</span>
                       </div>
                     </div>
+                    <label class="small"><input id="ma-buy-first-only" type="checkbox"> 买入仅首次达到时交易（退出条件后才可再次触发）</label>
                     <div class="field">
                       <label for="sell-threshold">卖出偏离比例</label>
                       <div class="input-unit"><input id="sell-threshold" type="number" value="5" min="0.01" max="99.99" step="0.01" required><span>%</span></div>
                     </div>
+                    <label class="small"><input id="ma-sell-first-only" type="checkbox"> 卖出仅首次达到时交易（退出条件后才可再次触发）</label>
                     <p class="rule-note" id="ma-rule">
                       低于 MA30 的 95% 买入，高于 105% 卖出。
                     </p>
@@ -275,6 +286,16 @@
                     <div class="field"><label for="momentum-interval">调仓间隔 <span>行情日</span></label><input id="momentum-interval" type="number" min="1" max="5000" value="21" required></div>
                     <div class="field"><label for="momentum-top-n">持有前 N 只</label><input id="momentum-top-n" type="number" min="1" max="50" value="1" required></div>
                     <p class="rule-note">收盘排名，下一有效收盘成交。入选股票各占 1/N，不使用上方固定权重；合格股票不足 N 只时空缺份额留现金。回看期内缺失行情的股票不参与排名。</p>
+                  </div>
+                  <label class="strategy-option">
+                    <input type="checkbox" name="strategy" value="dca">
+                    <span class="strategy-icon amber"><svg><use href="#i-pool" /></svg></span>
+                    <span><strong>定投策略</strong><small>定期追加资金，按权重买入</small></span><span class="option-check"></span>
+                  </label>
+                  <div id="dca-options" class="strategy-settings" hidden>
+                    <div class="field"><label for="dca-amount">每期追加金额 <span>含买入费用</span></label><input id="dca-amount" type="number" min="0.01" step="any" value="1000" required></div>
+                    <div class="field"><label for="dca-frequency">定投周期</label><select id="dca-frequency"><option value="weekly">每周</option><option value="monthly" selected>每月</option><option value="quarterly">每季度</option><option value="annual">每年</option><option value="each_observation">每个行情日</option></select></div>
+                    <p class="rule-note">首日按股票池权重投入初始资金，之后在新周期的首个行情日追加固定金额，只买入、不卖出。无报价的份额留现金等待成交。收益率与回撤采用时间加权口径，剔除追加本金影响。</p>
                   </div>
                 </section>
                 <section class="config-section">
@@ -356,7 +377,7 @@
                     <svg><use href="#i-play" /></svg><span>运行回测</span
                     ><kbd>↵</kbd>
                   </button>
-                  <p>各策略独立账户 · 同区间 · 同初始资金</p>
+                  <p>各策略独立账户 · 同区间 · 同初始资金，定投另有周期入金</p>
                 </div>
               </form>
             </aside>
@@ -474,7 +495,7 @@
                     <thead>
                       <tr>
                         <th>策略</th>
-                        <th>最终资产</th>
+                        <th>最终资产</th><th>累计投入本金</th>
                         <th>累计收益</th>
                         <th>年化收益</th>
                         <th>最大回撤</th>
@@ -483,7 +504,7 @@
                     </thead>
                     <tbody>
                       <tr>
-                        <td colspan="8" class="empty-cell">
+                        <td colspan="9" class="empty-cell">
                           运行回测后，比较收益与风险。
                         </td>
                       </tr>
@@ -510,6 +531,7 @@
                   ><button data-table="yearly_returns">年度收益</button
                   ><button data-table="positions">期末持仓</button
                   ><button data-table="orders">订单</button>
+                  <button data-table="contributions">投入记录</button>
                   <button data-table="subperiods">独立子区间</button>
                   <button data-table="sensitivity">参数扰动</button>
                 </div>
@@ -527,7 +549,7 @@
                 <svg><use href="#i-info" /></svg>
                 <p>
                   <strong>回测口径</strong> MA
-                  及动量信号在下一有效交易日收盘执行；买入持有在首个有效收盘日建仓。均线预热期保留现金。数据与结果仅存储在本机。
+                  及动量信号在下一有效交易日收盘执行；买入持有在首个有效收盘日建仓。均线预热期保留现金。定投按固定周期在收盘追加资金并买入；定投和自动追加资金的均线策略，收益与回撤按时间加权计算，总资产含追加本金，比较资产金额时需同时看累计投入。数据与结果仅存储在本机。
                 </p>
               </div>
             </div>

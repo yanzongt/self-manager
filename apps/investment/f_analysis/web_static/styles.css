@@ -2067,3 +2067,5 @@ dialog > .button {
 .research-summary { padding: 12px 22px; font-size: 12px; line-height: 1.8; color: var(--text-secondary, #64748b); }
 .research-summary p { margin: 4px 0; }
 .legend-dot.purple-dot, .purple-dot { background: #8b5bb1; }
+
+.legend-dot.orange-dot, .orange-dot { background: #cc7040; }

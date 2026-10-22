@@ -147,6 +147,10 @@ class WebTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["token"], self.app.token)
         self.assertEqual(json.loads(body)["capabilities"]["research_version"], 1)
+        self.assertEqual(json.loads(body)["capabilities"]["dca_version"], 1)
+        self.assertEqual(json.loads(body)["capabilities"]["ma_independent_version"], 1)
+        self.assertEqual(json.loads(body)["capabilities"]["ma_contributions_version"], 1)
+        self.assertEqual(json.loads(body)["capabilities"]["ma_entry_budget_version"], 1)
 
     def test_background_run_uses_real_engine_and_exports_all_results(self):
         run_id = self.complete_run()
@@ -207,6 +211,75 @@ class WebTests(unittest.TestCase):
             time.sleep(0.02)
         self.assertEqual(self.app.job_status(bad)["state"], "failed")
         self.assertIn("至少需 2 日", self.app.job_status(bad)["message"])
+
+    def test_dca_contributions_metrics_and_exports(self):
+        payload = {**request_data(), "strategies": ["buy_hold", "dca"], "dca_amount": 100,
+                   "dca_frequency": "each_observation", "subperiod_count": 2}
+        run_id = self.complete_run(payload)
+        status, _, body = self.http(f"/api/runs/{run_id}")
+        self.assertEqual(status, 200)
+        result = json.loads(body)["results"]["dca"]
+        self.assertEqual(result["summary"]["total_contributed"], 1700)
+        self.assertEqual(result["summary"]["return_method"], "time_weighted")
+        self.assertAlmostEqual(result["summary"]["total_pnl"], result["summary"]["final_equity"] - 1700)
+        self.assertEqual(len(result["tables"]["contributions"]), 8)
+        self.assertEqual(len(result["tables"]["subperiods"]), 2)
+        self.assertTrue(all(row["side"] == "buy" for row in result["tables"]["fills"]))
+        self.assertEqual(self.http(f"/api/runs/{run_id}/files/dca/contributions.csv")[0], 200)
+        with zipfile.ZipFile(io.BytesIO(self.http(f"/api/runs/{run_id}/download.zip")[2])) as archive:
+            self.assertIn("dca/contributions.csv", archive.namelist())
+
+    def test_ma_independent_orders_and_research_survive_http(self):
+        payload = {**request_data(), "strategies": ["ma_band"], "ma_window": 2,
+                   "ma_trade_mode": "independent", "ma_buy_amount": 100,
+                   "ma_sell_fraction": 0.5, "subperiod_count": 2, "sensitivity_enabled": True}
+        run_id = self.complete_run(payload)
+        detail = json.loads(self.http(f"/api/runs/{run_id}")[2])
+        result = detail["results"]["ma_band"]
+        self.assertEqual(result["summary"]["ma_trade_mode"], "independent")
+        self.assertEqual(detail["metadata"]["config"]["ma_sell_fraction"], 0.5)
+        fills = [row for row in result["tables"]["fills"] if row["ticker"] == "A"]
+        self.assertEqual([row["side"] for row in fills[:4]], ["buy", "buy", "sell", "sell"])
+        self.assertTrue(any(row["order_type"] == "signal_buy_budget" for row in result["tables"]["orders"]))
+        self.assertTrue(any(row["order_type"] == "signal_sell_fraction" for row in result["tables"]["orders"]))
+        self.assertEqual(len(result["tables"]["sensitivity"]), 5)
+        self.assertEqual(self.http(f"/api/runs/{run_id}/files/ma_band/orders.csv")[0], 200)
+        self.assertEqual(self.http("/api/runs", {**payload, "ma_sell_fraction": 1.1})[0], 400)
+
+    def test_ma_auto_contribution_reports_real_principal_and_cash_flow_exports(self):
+        payload = {**request_data(), "strategies": ["ma_band"], "initial_cash": 50, "ma_window": 2,
+                   "ma_trade_mode": "independent", "ma_buy_amount": 100, "ma_sell_fraction": 0.5,
+                   "ma_funding_mode": "auto_contribute", "subperiod_count": 2}
+        run_id = self.complete_run(payload)
+        result = json.loads(self.http(f"/api/runs/{run_id}")[2])["results"]["ma_band"]
+        self.assertGreater(result["summary"]["total_contributed"], 50)
+        self.assertEqual(result["summary"]["return_method"], "time_weighted")
+        self.assertEqual(result["summary"]["ma_funding_mode"], "auto_contribute")
+        self.assertTrue(any(row["kind"] == "signal_top_up" for row in result["tables"]["contributions"]))
+        self.assertAlmostEqual(result["summary"]["total_pnl"], result["summary"]["final_equity"] - result["summary"]["total_contributed"])
+        self.assertEqual(self.http(f"/api/runs/{run_id}/files/ma_band/contributions.csv")[0], 200)
+        with zipfile.ZipFile(io.BytesIO(self.http(f"/api/runs/{run_id}/download.zip")[2])) as archive:
+            self.assertIn("ma_band/contributions.csv", archive.namelist())
+
+    def test_ma_first_entries_and_cash_plus_extra_config_and_reports(self):
+        payload = {**request_data(), "strategies": ["ma_band"], "ma_window": 2,
+                   "ma_trade_mode": "independent", "ma_buy_first_only": True, "ma_sell_first_only": True,
+                   "ma_buy_budget_mode": "cash_plus_extra", "ma_extra_amount": 200,
+                   "subperiod_count": 2, "sensitivity_enabled": True}
+        run_id = self.complete_run(payload)
+        detail = json.loads(self.http(f"/api/runs/{run_id}")[2])
+        result = detail["results"]["ma_band"]
+        summary = result["summary"]
+        self.assertTrue(summary["ma_buy_first_only"])
+        self.assertTrue(summary["ma_sell_first_only"])
+        self.assertEqual(summary["ma_buy_budget_mode"], "cash_plus_extra")
+        self.assertEqual(detail["metadata"]["config"]["ma_extra_amount"], 200)
+        first_buys = [row for row in result["tables"]["fills"] if row["side"] == "buy" and row["date"] == result["tables"]["fills"][0]["date"]]
+        self.assertAlmostEqual(sum(row["notional"] + row["fee"] for row in first_buys), 1200)
+        self.assertTrue(all(row["amount"] == 200 for row in result["tables"]["contributions"] if row["kind"] == "signal_extra"))
+        self.assertEqual(len(result["tables"]["subperiods"]), 2)
+        self.assertEqual(len(result["tables"]["sensitivity"]), 5)
+        self.assertEqual(self.http(f"/api/runs/{run_id}/files/ma_band/contributions.csv")[0], 200)
 
     def test_invalid_payload_and_cross_site_requests_cannot_start_jobs(self):
         self.assertEqual(

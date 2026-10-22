@@ -35,13 +35,24 @@ def backtest(
     buy_threshold=None,
     sell_threshold=None,
     return_result=False,
+    trade_mode="full_position",
+    buy_amount=1000,
+    sell_fraction=0.25,
+    funding_mode="cash",
+    buy_first_only=False,
+    sell_first_only=False,
+    buy_budget_mode="fixed",
+    extra_amount=1000,
 ):
     """原单股票 API 的兼容入口；成交和账本统一由多资产引擎处理。"""
     if strategy not in STRATEGIES:
         raise ValueError(f"未知策略: {strategy}")
     close = close.dropna().astype(float)
     if strategy == "ma_band":
-        selected = MABand(window, threshold, buy_threshold=buy_threshold, sell_threshold=sell_threshold)
+        selected = MABand(window, threshold, buy_threshold=buy_threshold, sell_threshold=sell_threshold,
+                          trade_mode=trade_mode, buy_amount=buy_amount, sell_fraction=sell_fraction, funding_mode=funding_mode,
+                          buy_first_only=buy_first_only, sell_first_only=sell_first_only,
+                          buy_budget_mode=buy_budget_mode, extra_amount=extra_amount)
         if len(close) < window:
             raise ValueError(
                 f"行情只有 {len(close)} 个有效价格，不足 MA{window} 所需数据"
@@ -56,7 +67,8 @@ def backtest(
     result = engine.run(prices, selected)
     benchmark = result if strategy == "buy_hold" else engine.run(prices, BuyAndHold())
     diagnostics = (
-        ma_band_signals(close, window, threshold, buy_threshold=buy_threshold, sell_threshold=sell_threshold)
+        ma_band_signals(close, window, threshold, buy_threshold=buy_threshold, sell_threshold=sell_threshold,
+                        buy_first_only=buy_first_only, sell_first_only=sell_first_only)
         if strategy == "ma_band"
         else pd.DataFrame({"close": close, "signal": 0})
     )
@@ -80,7 +92,8 @@ def backtest(
             "buy_hold_final_equity": benchmark.summary["final_equity"],
             "buy_hold_return": benchmark.summary["total_return"],
             "pending_action": (
-                "buy" if pending.iloc[-1]["target_weight"] > 0 else "sell"
+                "buy" if pending.iloc[-1]["order_type"] == "signal_buy_budget" or
+                (pd.notna(pending.iloc[-1]["target_weight"]) and pending.iloc[-1]["target_weight"] > 0) else "sell"
             )
             if len(pending)
             else "none",
@@ -245,15 +258,27 @@ def main():
             buy_threshold=research["buy_threshold"],
             sell_threshold=research["sell_threshold"],
             return_result=True,
+            trade_mode=research["ma_trade_mode"],
+            buy_amount=research["ma_buy_amount"],
+            sell_fraction=research["ma_sell_fraction"],
+            funding_mode=research["ma_funding_mode"],
+            buy_first_only=research["ma_buy_first_only"],
+            sell_first_only=research["ma_sell_first_only"],
+            buy_budget_mode=research["ma_buy_budget_mode"],
+            extra_amount=research["ma_extra_amount"],
         )
         pool = StockPool.from_tickers(["ASSET"])
         selected = (MABand(args.ma_window, args.threshold,
-                          buy_threshold=research["buy_threshold"], sell_threshold=research["sell_threshold"])
+                          buy_threshold=research["buy_threshold"], sell_threshold=research["sell_threshold"],
+                          trade_mode=research["ma_trade_mode"], buy_amount=research["ma_buy_amount"],
+                          sell_fraction=research["ma_sell_fraction"], funding_mode=research["ma_funding_mode"],
+                          buy_first_only=research["ma_buy_first_only"], sell_first_only=research["ma_sell_first_only"],
+                          buy_budget_mode=research["ma_buy_budget_mode"], extra_amount=research["ma_extra_amount"])
                     if strategy == "ma_band" else BuyAndHold())
         evaluate_robustness(BacktestEngine(pool, BacktestConfig(args.initial_cash, args.fee_rate)),
                             prices[args.ticker].dropna().to_frame("ASSET"), selected, core_result, config)
         summary.update({k: v for k, v in core_result.summary.items()
-                        if k.startswith(("subperiod_", "sensitivity_"))})
+                        if k.startswith(("subperiod_", "sensitivity_", "ma_"))})
         summary.update(
             {
                 "ticker": args.ticker,
@@ -269,6 +294,8 @@ def main():
         results[strategy] = history, trades, summary
         save_result(output_dir / strategy, history, trades, summary, args.initial_cash)
         save_research(output_dir / strategy, core_result)
+        if not core_result.contributions.empty:
+            core_result.contributions.to_csv(output_dir / strategy / "contributions.csv", index=False)
         print_summary(summary)
     comparison = pd.DataFrame([value[2] for value in results.values()])
     comparison["extra_return_vs_buy_hold"] = (

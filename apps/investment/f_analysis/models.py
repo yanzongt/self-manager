@@ -93,3 +93,4 @@ class BacktestResult:
     subperiods: pd.DataFrame = field(default_factory=pd.DataFrame)
     sensitivity: pd.DataFrame = field(default_factory=pd.DataFrame)
     robustness: dict = field(default_factory=dict)
+    contributions: pd.DataFrame = field(default_factory=pd.DataFrame)

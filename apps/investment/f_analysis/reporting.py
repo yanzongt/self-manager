@@ -15,6 +15,8 @@ def save_result(output_dir, result):
         encoding="utf-8",
     )
     save_research(output_dir, result)
+    if not result.contributions.empty:
+        result.contributions.to_csv(output_dir / "contributions.csv", index=False)
     for name in ["history", "positions", "fills", "trades", "orders"]:
         frame = getattr(result, name)
         frame.to_csv(

@@ -7,13 +7,28 @@ import pandas as pd
 def equity_metrics(history, initial_cash):
     history = history.copy()
     previous = history["equity"].shift(1, fill_value=initial_cash)
-    history["daily_pnl"] = history["equity"] - previous
-    history["daily_return"] = history["equity"] / previous - 1
-    history["cumulative_pnl"] = history["equity"] - initial_cash
-    history["total_return"] = history["equity"] / initial_cash - 1
-    history["drawdown"] = (
-        history["equity"] / history["equity"].cummax().clip(lower=initial_cash) - 1
-    )
+    flow = history.get("contribution", pd.Series(0.0, index=history.index))
+    history["daily_pnl"] = history["equity"] - previous - flow
+    history["daily_return"] = (history["equity"] - flow) / previous - 1
+    if "pre_contribution_equity" in history:
+        # 入金发生在收盘成交前：先计算旧资金截至入金前的表现，再计算入金后成交的费用。
+        # 不能将新资金买入产生的手续费全部除以旧本金，否则大额补款会产生低于 -100% 的假收益。
+        before_flow = history["pre_contribution_equity"]
+        funded = flow.ne(0) & before_flow.notna()
+        history.loc[funded, "daily_return"] = (
+            before_flow[funded] / previous[funded]
+            * history.loc[funded, "equity"] / (before_flow[funded] + flow[funded]) - 1
+        )
+    history["cumulative_pnl"] = history["equity"] - initial_cash - flow.cumsum()
+    if flow.ne(0).any():
+        nav = (1 + history["daily_return"]).cumprod()
+        history["total_return"] = nav - 1
+        history["drawdown"] = nav / nav.cummax().clip(lower=1.0) - 1
+    else:
+        history["total_return"] = history["equity"] / initial_cash - 1
+        history["drawdown"] = (
+            history["equity"] / history["equity"].cummax().clip(lower=initial_cash) - 1
+        )
     return history
 
 
@@ -24,7 +39,7 @@ def summarize(history, trades, config, strategy, pending_count):
     years = (last - first).total_seconds() / (365.25 * 86400)
     with np.errstate(over="ignore", invalid="ignore"):
         cagr = (
-            np.expm1(np.log(final["equity"] / config.initial_cash) / years)
+            np.expm1(np.log1p(final["total_return"]) / years)
             if years > 0
             else np.nan
         )
@@ -35,7 +50,11 @@ def summarize(history, trades, config, strategy, pending_count):
         "trading_days": len(history),
         "initial_cash": config.initial_cash,
         "final_equity": float(final["equity"]),
-        "total_pnl": float(final["equity"] - config.initial_cash),
+        "total_contributed": float(final.get("total_contributed", config.initial_cash)),
+        "additional_contributions": float(final.get("total_contributed", config.initial_cash) - config.initial_cash),
+        "total_pnl": float(final["cumulative_pnl"]),
+        "profit_on_contributed": float(final["cumulative_pnl"] / final.get("total_contributed", config.initial_cash)),
+        "return_method": "time_weighted" if strategy == "dca" or history.get("contribution", pd.Series(dtype=float)).ne(0).any() else "initial_capital",
         "total_return": float(final["total_return"]),
         "cagr": float(cagr) if np.isfinite(cagr) else None,
         "max_drawdown": float(history["drawdown"].min()),
@@ -56,6 +75,15 @@ def summarize(history, trades, config, strategy, pending_count):
 def period_performance(history, initial_cash, rule):
     equity = history["equity"].resample(rule).last().dropna()
     previous = equity.shift(1, fill_value=initial_cash)
+    if "contribution" in history and history["contribution"].ne(0).any():
+        nav = (1 + history["total_return"]).resample(rule).last().dropna()
+        flow = history["contribution"].resample(rule).sum().reindex(equity.index)
+        return pd.DataFrame({
+            "ending_equity": equity, "contribution": flow,
+            "pnl": equity - previous - flow,
+            "return": nav / nav.shift(1, fill_value=1.0) - 1,
+            "cumulative_pnl": history["cumulative_pnl"].resample(rule).last().reindex(equity.index),
+        })
     return pd.DataFrame(
         {
             "ending_equity": equity,

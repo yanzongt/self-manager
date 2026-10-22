@@ -1,4 +1,4 @@
-"""策略只产生目标权重，不操作现金或计算成交数量。"""
+"""策略产生目标权重或定时投入计划，不直接修改账户或计算成交数量。"""
 
 from dataclasses import dataclass, field
 from typing import Mapping, Protocol
@@ -63,6 +63,8 @@ FREQUENCIES = ("monthly", "quarterly", "semiannual", "annual", "each_observation
 
 
 def _period_key(date, frequency):
+    if frequency == "weekly":
+        return tuple(date.isocalendar()[:2])
     if frequency == "monthly":
         return date.year, date.month
     if frequency == "quarterly":
@@ -72,6 +74,38 @@ def _period_key(date, frequency):
     if frequency == "annual":
         return date.year
     return date
+
+
+DCA_FREQUENCIES = ("weekly", "monthly", "quarterly", "annual", "each_observation")
+
+
+@dataclass(frozen=True)
+class DollarCostAveraging(BaseStrategy):
+    """首日投资初始资金；后续周期追加金额，仅买入新增资金对应份额。"""
+
+    amount: float = 1000.0
+    frequency: str = "monthly"
+    weights: Mapping[str, float] | None = None
+    name = "dca"
+
+    def __post_init__(self):
+        if isinstance(self.amount, bool) or not np.isfinite(self.amount) or self.amount <= 0:
+            raise ValueError("每期定投金额必须为有限正数")
+        if self.frequency not in DCA_FREQUENCIES:
+            raise ValueError("无效定投频率")
+
+    def initial_targets(self, pool):
+        allocation(pool, self.weights)
+        return None
+
+    def scheduled_investment(self, date, previous_date, pool, initial_cash):
+        if previous_date is None:
+            deposit, budget = 0.0, initial_cash
+        elif _period_key(date, self.frequency) != _period_key(previous_date, self.frequency):
+            deposit, budget = self.amount, self.amount
+        else:
+            return 0.0, {}
+        return deposit, {t: budget * w for t, w in allocation(pool, self.weights).items() if w > 0}
 
 
 @dataclass(frozen=True)
@@ -92,7 +126,8 @@ class FixedWeightRebalance(BuyAndHold):
         return None
 
 
-def ma_band_signals(close, window=30, threshold=0.05, *, buy_threshold=None, sell_threshold=None):
+def ma_band_signals(close, window=30, threshold=0.05, *, buy_threshold=None, sell_threshold=None,
+                    buy_first_only=False, sell_first_only=False):
     if not isinstance(window, int) or isinstance(window, bool) or window < 1:
         raise ValueError("MA 窗口必须为正整数")
     buy = threshold if buy_threshold is None else buy_threshold
@@ -104,8 +139,11 @@ def ma_band_signals(close, window=30, threshold=0.05, *, buy_threshold=None, sel
     frame = pd.DataFrame({"close": close, "ma": ma})
     frame["buy_line"] = ma * (1 - buy)
     frame["sell_line"] = ma * (1 + sell)
+    buying = close < frame["buy_line"]
+    selling = close > frame["sell_line"]
     frame["signal"] = np.select(
-        [close < frame["buy_line"], close > frame["sell_line"]],
+        [buying & ~buying.shift(1, fill_value=False) if buy_first_only else buying,
+         selling & ~selling.shift(1, fill_value=False) if sell_first_only else selling],
         [1, -1],
         default=0,
     )
@@ -119,11 +157,37 @@ class MABand(BaseStrategy):
     weights: Mapping[str, float] | None = None
     buy_threshold: float | None = None
     sell_threshold: float | None = None
+    trade_mode: str = "full_position"
+    buy_amount: float = 1000.0
+    sell_fraction: float = 0.25
+    funding_mode: str = "cash"
+    buy_first_only: bool = False
+    sell_first_only: bool = False
+    buy_budget_mode: str = "fixed"
+    extra_amount: float = 1000.0
     name = "ma_band"
 
     def __post_init__(self):
         ma_band_signals(pd.Series(dtype=float), self.window, self.threshold,
                         buy_threshold=self.buy_threshold, sell_threshold=self.sell_threshold)
+        if self.trade_mode not in ("full_position", "independent"):
+            raise ValueError("无效均线交易模式")
+        if self.funding_mode not in ("cash", "auto_contribute"):
+            raise ValueError("无效均线资金来源")
+        if self.funding_mode == "auto_contribute" and self.trade_mode != "independent":
+            raise ValueError("自动追加资金仅适用于均线独立买卖模式")
+        if type(self.buy_first_only) is not bool or type(self.sell_first_only) is not bool:
+            raise ValueError("买卖首次触发选项必须为布尔值")
+        if self.buy_budget_mode not in ("fixed", "cash_plus_extra"):
+            raise ValueError("无效均线买入预算方式")
+        if self.buy_budget_mode == "cash_plus_extra" and self.trade_mode != "independent":
+            raise ValueError("全现金加额外投入仅适用于独立买卖模式")
+        if isinstance(self.extra_amount, bool) or not np.isfinite(self.extra_amount) or self.extra_amount < 0:
+            raise ValueError("均线额外投入金额必须为非负有限数")
+        if isinstance(self.buy_amount, bool) or not np.isfinite(self.buy_amount) or self.buy_amount <= 0:
+            raise ValueError("均线每次买入总预算必须为有限正数")
+        if isinstance(self.sell_fraction, bool) or not np.isfinite(self.sell_fraction) or not 0 < self.sell_fraction <= 1:
+            raise ValueError("均线每次卖出比例必须大于 0 且不超过 1")
 
     @property
     def buy_deviation(self):
@@ -137,22 +201,50 @@ class MABand(BaseStrategy):
         allocation(pool, self.weights)  # 即使没有触发信号也校验配置
         return None
 
+    def triggers(self, context, ticker):
+        if pd.isna(context.history[ticker].iloc[-1]):
+            return False, False
+        recent = context.history[ticker].dropna().iloc[-self.window - 1:]
+        if len(recent) < self.window:
+            return False, False
+        price, ma = recent.iloc[-1], recent.iloc[-self.window:].mean()
+        buy = price < ma * (1 - self.buy_deviation)
+        sell = price > ma * (1 + self.sell_deviation)
+        if len(recent) > self.window:
+            previous, previous_ma = recent.iloc[-2], recent.iloc[:-1].mean()
+            if self.buy_first_only:
+                buy = buy and not previous < previous_ma * (1 - self.buy_deviation)
+            if self.sell_first_only:
+                sell = sell and not previous > previous_ma * (1 + self.sell_deviation)
+        return bool(buy), bool(sell)
+
     def on_close(self, context):
+        if self.trade_mode == "independent":
+            return None
         budgets = allocation(context.pool, self.weights)
         targets = {}
         for ticker in context.pool.tickers:
-            if pd.isna(context.history[ticker].iloc[-1]):
-                continue
-            valid = context.history[ticker].dropna().iloc[-self.window :]
-            if len(valid) < self.window:
-                continue
-            price, ma = valid.iloc[-1], valid.mean()
+            buy, sell = self.triggers(context, ticker)
             held = context.quantities[ticker] > 0
-            if not held and budgets[ticker] > 0 and price < ma * (1 - self.buy_deviation):
+            if not held and budgets[ticker] > 0 and buy:
                 targets[ticker] = budgets[ticker]
-            elif held and price > ma * (1 + self.sell_deviation):
+            elif held and sell:
                 targets[ticker] = 0.0
         return targets or None
+
+    def on_close_orders(self, context):
+        """独立买卖：买入不检查是否已持仓，卖出只受实际可卖持仓限制。"""
+        buys, sells = {}, {}
+        if self.trade_mode != "independent":
+            return buys, sells
+        weights = allocation(context.pool, self.weights)
+        for ticker in context.pool.tickers:
+            buy, sell = self.triggers(context, ticker)
+            if weights[ticker] > 0 and buy:
+                buys[ticker] = weights[ticker] if self.buy_budget_mode == "cash_plus_extra" else self.buy_amount * weights[ticker]
+            if context.quantities[ticker] > 0 and sell:
+                sells[ticker] = self.sell_fraction
+        return buys, sells
 
 
 @dataclass

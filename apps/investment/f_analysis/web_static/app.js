@@ -9,18 +9,21 @@ const labels = {
   buy_hold: "买入持有",
   ma_band: "MA 均线策略",
   fixed_weight: "固定权重再平衡",
+  dca: "定投策略",
   cross_sectional_momentum: "截面动量策略",
 };
 const colors = {
   buy_hold: "#4266dc",
   ma_band: "#168471",
   fixed_weight: "#b98842",
+  dca: "#cc7040",
   cross_sectional_momentum: "#8b5bb1",
 };
 const colorClasses = {
   buy_hold: "blue-dot",
   ma_band: "green-dot",
   fixed_weight: "amber-dot",
+  dca: "orange-dot",
   cross_sectional_momentum: "purple-dot",
 };
 const stateLabels = {
@@ -152,6 +155,14 @@ function formData() {
     period: $("#period").value,
     initial_cash: Number($("#initial-cash").value),
     fee_rate: Number($("#fee-rate").value) / 100,
+    ma_trade_mode: $("#ma-trade-mode").value,
+    ma_buy_first_only: $("#ma-buy-first-only").checked,
+    ma_sell_first_only: $("#ma-sell-first-only").checked,
+    ma_buy_budget_mode: $("#ma-trade-mode").value === "independent" ? $("#ma-buy-budget-mode").value : "fixed",
+    ma_extra_amount: Number($("#ma-extra-amount").value),
+    ma_funding_mode: $("#ma-trade-mode").value === "independent" && $("#ma-buy-budget-mode").value === "fixed" ? $("#ma-funding-mode").value : "cash",
+    ma_buy_amount: Number($("#ma-buy-amount").value),
+    ma_sell_fraction: Number($("#ma-sell-fraction").value) / 100,
     ma_window: Number($("#ma-window").value),
     threshold: Number($("#threshold").value) / 100,
     buy_threshold: Number($("#threshold").value) / 100,
@@ -162,6 +173,8 @@ function formData() {
     subperiod_count: Number($("#subperiod-count").value),
     sensitivity_enabled: $("#sensitivity-enabled").checked,
     perturbation: Number($("#perturbation").value) / 100,
+    dca_amount: Number($("#dca-amount").value),
+    dca_frequency: $("#dca-frequency").value,
     rebalance_frequency: $("#frequency").value,
     data_mode: $("#data-mode").value,
   };
@@ -221,6 +234,20 @@ function updateForm() {
   $("#ma-options").hidden = !ma;
   $("#rebalance-options").hidden = !fixed;
   $("#ma-window").disabled = !ma;
+  $("#ma-trade-mode").disabled = !ma;
+  const independent = ma && $("#ma-trade-mode").value === "independent";
+  $("#ma-independent-options").hidden = !independent;
+  const cashPlus = independent && $("#ma-buy-budget-mode").value === "cash_plus_extra";
+  $("#ma-buy-budget-mode").disabled = !independent;
+  $("#ma-extra-options").hidden = !cashPlus;
+  $("#ma-extra-amount").disabled = !cashPlus;
+  $("#ma-fixed-budget-field").hidden = cashPlus;
+  $("#ma-funding-field").hidden = cashPlus;
+  $("#ma-buy-amount").disabled = !independent || cashPlus;
+  $("#ma-funding-mode").disabled = !independent || cashPlus;
+  $("#ma-buy-first-only").disabled = !ma;
+  $("#ma-sell-first-only").disabled = !ma;
+  $("#ma-sell-fraction").disabled = !independent;
   $("#threshold").disabled = !ma;
   $("#sell-threshold").disabled = !ma;
   const momentum = $('input[value="cross_sectional_momentum"]').checked;
@@ -229,6 +256,10 @@ function updateForm() {
   $("#momentum-top-n").max = rows.length;
   $("#perturbation").disabled = !$("#sensitivity-enabled").checked;
   $("#frequency").disabled = !fixed;
+  const dca = $('input[value="dca"]').checked;
+  $("#dca-options").hidden = !dca;
+  $("#dca-amount").disabled = !dca;
+  $("#dca-frequency").disabled = !dca;
   $$("[data-ma]").forEach((button) =>
     button.classList.toggle(
       "selected",
@@ -290,12 +321,22 @@ function applyConfig(config) {
   $("#threshold").value = Number(((config.buy_threshold ?? config.threshold ?? 0.05) * 100).toFixed(6));
   $("#sell-threshold").value = Number(((config.sell_threshold ?? config.threshold ?? 0.05) * 100).toFixed(6));
   for (const [id, value] of Object.entries({
+    "ma-trade-mode": config.ma_trade_mode ?? "full_position",
+    "ma-funding-mode": config.ma_funding_mode ?? "cash",
+    "ma-buy-budget-mode": config.ma_buy_budget_mode ?? "fixed",
+    "ma-extra-amount": config.ma_extra_amount ?? 1000,
+    "ma-buy-amount": config.ma_buy_amount ?? 1000,
+    "ma-sell-fraction": (config.ma_sell_fraction ?? 0.25) * 100,
     "momentum-lookback": config.momentum_lookback ?? 126,
     "momentum-interval": config.momentum_interval ?? 21,
     "momentum-top-n": config.momentum_top_n ?? 1,
+    "dca-amount": config.dca_amount ?? 1000,
+    "dca-frequency": config.dca_frequency ?? "monthly",
     "subperiod-count": config.subperiod_count ?? 0,
     "perturbation": (config.perturbation ?? 0.1) * 100,
   })) $(`#${id}`).value = value;
+  $("#ma-buy-first-only").checked = config.ma_buy_first_only === true;
+  $("#ma-sell-first-only").checked = config.ma_sell_first_only === true;
   $("#sensitivity-enabled").checked = config.sensitivity_enabled === true;
   // 旧命令行记录没有行情模式，恢复为缓存优先。
   if (!config.data_mode) $("#data-mode").value = "cache";
@@ -522,11 +563,11 @@ function renderMetrics() {
     [
       "最终总资产",
       num(summary.final_equity),
-      `累计盈亏 ${summary.total_pnl >= 0 ? "+" : ""}${num(summary.total_pnl)}`,
+      `累计投入 ${num(summary.total_contributed ?? summary.initial_cash)} · 盈亏 ${summary.total_pnl >= 0 ? "+" : ""}${num(summary.total_pnl)}`,
       "",
     ],
     [
-      "累计收益率",
+      summary.return_method === "time_weighted" ? "时间加权收益率" : "累计收益率",
       pct(summary.total_return),
       extra == null
         ? labels[state.selected]
@@ -534,7 +575,7 @@ function renderMetrics() {
       signClass(summary.total_return),
     ],
     [
-      "年化收益率",
+      summary.return_method === "time_weighted" ? "时间加权年化收益率" : "年化收益率",
       pct(summary.cagr),
       `${summary.start} — ${summary.end}`,
       signClass(summary.cagr),
@@ -578,6 +619,7 @@ function renderComparison() {
     row.append(first);
     [
       [num(item.final_equity), ""],
+      [num(item.total_contributed ?? item.initial_cash), ""],
       [pct(item.total_return), signClass(item.total_return)],
       [pct(item.cagr), signClass(item.cagr)],
       [pct(item.max_drawdown), Number(item.max_drawdown) < 0 ? "negative" : ""],
@@ -607,14 +649,16 @@ function renderComparison() {
   });
 }
 const tableSpecs = {
+  contributions: [["date", "入金日期", "date"], ["kind", "类型", "contributionKind"], ["amount", "投入金额", "num"], ["total_contributed", "累计投入本金", "num"]],
   subperiods: [
     ["subperiod", "区间"], ["start", "开始", "date"], ["end", "结束", "date"],
-    ["trading_days", "行情日数"], ["total_return", "收益率", "pct"], ["cagr", "年化收益", "pct"],
+    ["trading_days", "行情日数"], ["total_contributed", "累计投入本金", "num"], ["total_pnl", "盈亏", "signed"], ["total_return", "收益率", "pct"], ["cagr", "年化收益", "pct"],
     ["max_drawdown", "最大回撤", "pct"], ["benchmark_return", "持有收益", "pct"],
     ["excess_return", "超额收益", "pct"], ["total_fees", "手续费", "num"], ["fills", "成交数"],
   ],
   sensitivity: [
     ["parameter", "变动参数", "parameter"], ["base_value", "原值", "parameterValue"], ["value", "扰动值", "parameterValue"],
+    ["total_contributed", "累计投入本金", "num"], ["total_pnl", "盈亏", "signed"],
     ["total_return", "收益率", "pct"], ["return_delta", "收益变化", "pp"], ["cagr", "年化收益", "pct"],
     ["max_drawdown", "最大回撤", "pct"], ["subperiod_return_std", "子区间收益标准差", "pct"],
     ["subperiod_worst_return", "最差子区间收益", "pct"], ["subperiod_positive_fraction", "盈利区间占比", "pct"],
@@ -664,6 +708,9 @@ const tableSpecs = {
     ["ticker", "股票"],
     ["signal_date", "信号日期", "date"],
     ["execution_date", "执行日期", "date"],
+    ["order_type", "订单类型", "orderType"],
+    ["budget", "含费买入预算", "num"],
+    ["sell_fraction", "卖出比例", "pct"],
     ["target_weight", "目标权重", "pct"],
     ["filled_quantity", "成交数量", "num"],
     ["status", "状态", "order"],
@@ -690,6 +737,8 @@ function renderDetails() {
   renderRobustness(result);
   $("#detail-summary").replaceChildren();
   [
+    ["累计投入本金", num(summary.total_contributed ?? summary.initial_cash)],
+    ["本金收益率（非年化）", pct(summary.profit_on_contributed)],
     ["现金", num(summary.final_cash)],
     ["已实现盈亏", num(summary.realized_pnl)],
     ["浮动盈亏", num(summary.unrealized_pnl)],
@@ -723,6 +772,7 @@ function renderDetails() {
         ? "此记录没有持仓文件，较早版本可重新运行以生成。"
         : state.table === "trades"
           ? "本次策略没有交易记录。未触发交易时资金保留为现金。"
+          : state.table === "contributions" ? "此记录没有入金明细；定投策略或开启自动追加资金的均线策略运行后可查看。"
           : ["subperiods", "sensitivity"].includes(state.table)
             ? missingResearchReport(state.table, state.selected, state.result.metadata.config)
           : "暂无记录；较早的命令行结果可能不包含此文件。",
@@ -738,7 +788,9 @@ function renderDetails() {
         cls = "";
       if (key === "ticker" && !value)
         value = state.result.metadata.config.ticker || "—";
-      if (type === "parameter")
+      if (type === "orderType") value = {target_weight: "目标权重", buy_budget: "定投买入", signal_buy_budget: "信号加仓", signal_sell_fraction: "信号减仓"}[value] || value;
+      else if (type === "contributionKind") value = {initial: "初始资金", recurring: "周期追加", signal_top_up: "买入补充资金", signal_extra: "全现金买入额外投入"}[value] || value;
+      else if (type === "parameter")
         value = {baseline: "基准配置", buy_threshold: "买入偏离比例", sell_threshold: "卖出偏离比例", lookback: "动量回看长度", rebalance_interval: "调仓间隔"}[value] || value;
       else if (type === "parameterValue") value = value == null ? "—" : item.parameter.endsWith("threshold") ? pct(value) : num(value, 0);
       else if (type === "pp") value = value == null ? "—" : `${num(value * 100)} pp`;
@@ -791,6 +843,15 @@ function renderDetails() {
 function renderRobustness(result) {
   const container = $("#robustness-summary");
   container.replaceChildren();
+  if (result.summary.ma_trade_mode === "independent") {
+    const summary = result.summary;
+    const cashPlus = summary.ma_buy_budget_mode === "cash_plus_extra";
+    const budget = cashPlus ? `全部可用现金＋额外追加 ${num(summary.ma_extra_amount)}（触发股票按相对权重分配）` : `每次买入总预算 ${num(summary.ma_buy_amount)}（按股票池权重分配）`;
+    const funding = cashPlus ? "实际买入日共用一次额外投入" : summary.ma_funding_mode === "auto_contribute" ? "不足资金自动追加" : "仅用现金，资金不足缩减买单";
+    container.append(node("p", "", `均线独立买卖 · ${budget} · 每次卖出持仓 ${pct(summary.ma_sell_fraction)} · ${funding}，不做空。`));
+  }
+  if (result.summary.ma_trade_mode)
+    container.append(node("p", "", `买入${result.summary.ma_buy_first_only ? "仅首次达到时交易" : "连续满足可重复交易"} · 卖出${result.summary.ma_sell_first_only ? "仅首次达到时交易" : "连续满足可重复交易"}；首次模式需先退出条件区才能再次触发。`));
   const report = result.robustness || {};
   const sub = report.subperiods;
   if (sub?.count) {
@@ -1095,6 +1156,14 @@ async function startRun(event) {
     state.config.capabilities = service.capabilities;
     const needsResearch = data.subperiod_count > 0 || data.sensitivity_enabled ||
       data.strategies.includes("cross_sectional_momentum") || data.buy_threshold !== data.sell_threshold;
+    if (data.strategies.includes("ma_band") && (data.ma_buy_first_only || data.ma_sell_first_only || data.ma_buy_budget_mode === "cash_plus_extra") && service.capabilities?.ma_entry_budget_version !== 1)
+      throw new Error("后台尚不支持均线首次触发和全现金加额外投入，请重启 ./start.sh 后重新运行。");
+    if (data.strategies.includes("ma_band") && data.ma_funding_mode === "auto_contribute" && service.capabilities?.ma_contributions_version !== 1)
+      throw new Error("后台尚不支持均线自动追加资金，请重启 ./start.sh 后重新运行。");
+    if (data.strategies.includes("ma_band") && data.ma_trade_mode === "independent" && service.capabilities?.ma_independent_version !== 1)
+      throw new Error("后台尚不支持均线独立买卖。请重启 ./start.sh 后重新运行，避免参数被忽略。");
+    if (data.strategies.includes("dca") && service.capabilities?.dca_version !== 1)
+      throw new Error(RESTART_MESSAGE);
     if (needsResearch && service.capabilities?.research_version !== RESEARCH_VERSION)
       throw new Error(RESTART_MESSAGE);
     const job = await api("/api/runs", {

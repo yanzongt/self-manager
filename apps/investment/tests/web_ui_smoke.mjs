@@ -39,7 +39,7 @@ let payload,
   detail,
   polls = 0;
 const config = {
-  capabilities: {research_version: 1},
+  capabilities: {research_version: 1, dca_version: 1, ma_independent_version: 1, ma_contributions_version: 1, ma_entry_budget_version: 1},
   token: "test-token",
   presets: [{ name: "example", stocks: { "600036.SS": "招商银行" } }],
   defaults,
@@ -79,6 +79,7 @@ function makeDetail() {
     fills: [],
     positions: [],
     orders: [],
+    contributions: [{date: "2024-01-01", kind: "initial", amount: 100000, total_contributed: 100000}],
     subperiods: [{subperiod: 1, start: "2024-01-01", end: "2024-01-02", total_return: 0.1}],
     sensitivity: [{parameter: "baseline", status: "ok", total_return: 0.05},
                   {parameter: "buy_threshold", base_value: 0.05, value: 0.045, status: "ok", total_return: 0.02, return_delta: -0.03}],
@@ -107,19 +108,19 @@ function makeDetail() {
       },
     },
     results: Object.fromEntries(
-      ["buy_hold", "ma_band"].map((name) => [
+      ["buy_hold", "ma_band", ...(payload.strategies.includes("dca") ? ["dca"] : [])].map((name) => [
         name,
         {
-          summary: { ...summary, strategy: name },
+          summary: { ...summary, strategy: name, return_method: name === "dca" ? "time_weighted" : "initial_capital", total_contributed: 100000 },
           robustness: {subperiods: {count: 2, total_return: {mean: 0.05, std: 0.02, min: 0.03, max: 0.07, positive_fraction: 1},
             cagr: {std: 0.02}, max_drawdown: {std: 0.01}, excess_return: {positive_fraction: 0.5}, no_trade_fraction: 0}},
           curve,
           tables,
-          counts: { trades: 1, monthly_returns: 1, subperiods: 1, sensitivity: 2 },
+          counts: { contributions: 1, trades: 1, monthly_returns: 1, subperiods: 1, sensitivity: 2 },
         },
       ]),
     ),
-    comparison: ["buy_hold", "ma_band"].map((strategy) => ({
+    comparison: ["buy_hold", "ma_band", ...(payload.strategies.includes("dca") ? ["dca"] : [])].map((strategy) => ({
       ...summary,
       strategy,
       extra_return_vs_buy_hold: 0,
@@ -228,6 +229,10 @@ try {
   $("#subperiod-count").value = "5";
   $("#sensitivity-enabled").click();
   assert.equal($("#perturbation").disabled, false);
+  $('input[value="dca"]').click();
+  assert.equal($("#dca-options").hidden, false);
+  $("#dca-amount").value = "500";
+  $("#dca-frequency").value = "weekly";
   // A refreshed frontend must not submit new research fields to an old Python process.
   delete config.capabilities;
   $("#backtest-form").dispatchEvent(
@@ -236,11 +241,49 @@ try {
   await waitFor(() => $("#form-error").textContent.includes("后台服务版本过旧"));
   assert.equal(submitted, 0);
   assert.equal($("#run-button").disabled, false);
-  config.capabilities = {research_version: 1};
+  config.capabilities = {research_version: 1, dca_version: 1, ma_independent_version: 1, ma_contributions_version: 1, ma_entry_budget_version: 1};
+  $("#ma-trade-mode").value = "independent";
+  $("#ma-trade-mode").dispatchEvent(new window.Event("change", {bubbles: true}));
+  assert.equal($("#ma-independent-options").hidden, false);
+  $("#ma-buy-amount").value = "2000";
+  $("#ma-sell-fraction").value = "40";
+  delete config.capabilities.ma_independent_version;
+  $("#backtest-form").dispatchEvent(new window.Event("submit", {bubbles: true, cancelable: true}));
+  await waitFor(() => $("#form-error").textContent.includes("尚不支持均线独立买卖"));
+  assert.equal(submitted, 0);
+  config.capabilities.ma_independent_version = 1;
+  $("#ma-funding-mode").value = "auto_contribute";
+  delete config.capabilities.ma_contributions_version;
+  $("#backtest-form").dispatchEvent(new window.Event("submit", {bubbles: true, cancelable: true}));
+  await waitFor(() => $("#form-error").textContent.includes("尚不支持均线自动追加资金"));
+  assert.equal(submitted, 0);
+  config.capabilities.ma_contributions_version = 1;
+  $("#ma-buy-budget-mode").value = "cash_plus_extra";
+  $("#ma-buy-budget-mode").dispatchEvent(new window.Event("change", {bubbles: true}));
+  assert.equal($("#ma-extra-options").hidden, false);
+  assert.equal($("#ma-buy-amount").disabled, true);
+  $("#ma-extra-amount").value = "250";
+  $("#ma-buy-first-only").checked = true;
+  $("#ma-sell-first-only").checked = true;
+  delete config.capabilities.ma_entry_budget_version;
+  $("#backtest-form").dispatchEvent(new window.Event("submit", {bubbles: true, cancelable: true}));
+  await waitFor(() => $("#form-error").textContent.includes("尚不支持均线首次触发"));
+  assert.equal(submitted, 0);
+  config.capabilities.ma_entry_budget_version = 1;
   $("#backtest-form").dispatchEvent(
     new window.Event("submit", { bubbles: true, cancelable: true }),
   );
   await waitFor(() => !$("#download-all").hidden && !$("#run-button").disabled);
+  assert.equal(payload.ma_funding_mode, "cash");
+  assert.equal(payload.ma_buy_budget_mode, "cash_plus_extra");
+  assert.equal(payload.ma_extra_amount, 250);
+  assert.equal(payload.ma_buy_first_only, true);
+  assert.equal(payload.ma_sell_first_only, true);
+  assert.equal(payload.ma_trade_mode, "independent");
+  assert.equal(payload.ma_buy_amount, 2000);
+  assert.equal(payload.ma_sell_fraction, 0.4);
+  assert.equal(payload.dca_amount, 500);
+  assert.equal(payload.dca_frequency, "weekly");
   assert.equal(payload.ma_window, 120);
   assert.equal(payload.buy_threshold, 0.05);
   assert.equal(payload.sell_threshold, 0.08);
@@ -259,19 +302,34 @@ try {
   assert.match($("#detail-download").href, /sensitivity.csv/);
   assert.equal(payload.data_mode, "offline");
   assert.equal($("#chart-empty").hidden, true);
-  assert.equal($("#comparison-table tbody").children.length, 2);
+  assert.equal($("#comparison-table tbody").children.length, 3);
   assert.match($("#metrics").textContent, /105,000/);
-  assert.equal($("#chart").querySelectorAll("path").length, 2);
+  assert.equal($("#chart").querySelectorAll("path").length, 3);
   $("#chart-legend button").click();
-  assert.equal($("#chart").querySelectorAll("path").length, 1);
+  assert.equal($("#chart").querySelectorAll("path").length, 2);
   $('[data-mode="drawdown"]').click();
-  assert.equal($("#chart").querySelectorAll("path").length, 1);
+  assert.equal($("#chart").querySelectorAll("path").length, 2);
   $('[data-table="monthly_returns"]').click();
   assert.match($("#detail-table").textContent, /2024-01/);
+  $("#detail-strategy").value = "dca";
+  $("#detail-strategy").dispatchEvent(new window.Event("change", {bubbles: true}));
+  assert.match($("#metrics").textContent, /时间加权收益率/);
+  $('[data-table="contributions"]').click();
+  assert.match($("#detail-table").textContent, /初始资金/);
+  assert.match($("#detail-download").href, /contributions.csv/);
   $('[data-ma="60"]').click();
   assert.equal($("#dirty-banner").hidden, false);
   $("#reuse-button").click();
   assert.equal($("#ma-window").value, "120");
+  assert.equal($("#ma-trade-mode").value, "independent");
+  assert.equal($("#ma-buy-budget-mode").value, "cash_plus_extra");
+  assert.equal($("#ma-extra-amount").value, "250");
+  assert.equal($("#ma-buy-first-only").checked, true);
+  assert.equal($("#ma-sell-first-only").checked, true);
+  assert.equal($("#ma-buy-amount").value, "2000");
+  assert.equal($("#ma-sell-fraction").value, "40");
+  assert.equal($("#dca-amount").value, "500");
+  assert.equal($("#dca-frequency").value, "weekly");
   assert.equal($("#sell-threshold").value, "8");
   assert.equal($("#momentum-lookback").value, "63");
   assert.equal($("#sensitivity-enabled").checked, true);
@@ -296,6 +354,13 @@ try {
   assert.match(window.missingResearchReport("subperiods", "ma_band", {}), /当前显示的这次回测未启用/);
   assert.match(window.missingResearchReport("sensitivity", "ma_band", {sensitivity_enabled: true}), /已启用.*缺少报告/);
   assert.match(window.missingResearchReport("sensitivity", "buy_hold", {sensitivity_enabled: true}), /没有适用的扰动参数/);
+  window.applyConfig(defaults);
+  assert.equal($("#ma-trade-mode").value, "full_position");
+  assert.equal($("#ma-funding-mode").value, "cash");
+  assert.equal($("#ma-buy-budget-mode").value, "fixed");
+  assert.equal($("#ma-buy-first-only").checked, false);
+  assert.equal($("#ma-sell-first-only").checked, false);
+  assert.equal($("#ma-independent-options").hidden, true);
   console.log(
     "Frontend DOM smoke passed: setup, saved stock pools and weights, MA120, submission, progress, chart toggles, tables, dirty-state, history and cache.",
   );

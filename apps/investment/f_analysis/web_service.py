@@ -35,6 +35,7 @@ from scripts import market_data
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STRATEGIES = {
+    "dca": "定投策略",
     "cross_sectional_momentum": "截面动量策略",
     "buy_hold": "买入持有",
     "ma_band": "MA 均线策略",
@@ -42,6 +43,7 @@ STRATEGIES = {
 }
 CATEGORIES = ("web_backtest", "portfolio_backtest", "single_stock_backtest")
 FILES = {
+    "contributions.csv",
     "robustness.json",
     "subperiods.csv",
     "sensitivity.csv",
@@ -254,7 +256,7 @@ class WebApplication:
 
     def configuration(self):
         return {
-            "capabilities": {"research_version": 1},
+            "capabilities": {"research_version": 1, "dca_version": 1, "ma_independent_version": 1, "ma_contributions_version": 1, "ma_entry_budget_version": 1},
             "token": self.token,
             "strategies": STRATEGIES,
             "presets": self.pool_presets(),
@@ -492,6 +494,7 @@ class WebApplication:
                         "total_return",
                         "drawdown",
                         "cumulative_pnl",
+                        "total_contributed",
                     )
                     if col in history
                 ]
@@ -512,6 +515,7 @@ class WebApplication:
                 "orders",
                 "subperiods",
                 "sensitivity",
+                "contributions",
             ):
                 table_path = directory / f"{file}.csv"
                 table = (

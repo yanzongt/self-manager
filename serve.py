@@ -62,7 +62,7 @@ class DataStore:
     @staticmethod
     def validate(data):
         if not isinstance(data, dict):
-            raise ValueError("无效数据")
+            raise TypeError("无效数据")
         if (
             not isinstance(data.get("tags"), list)
             or not data["tags"]
@@ -70,7 +70,7 @@ class DataStore:
         ):
             raise ValueError("无效项目标签")
         if not isinstance(data.get("records"), list):
-            raise ValueError("无效历史记录")
+            raise TypeError("无效历史记录")
 
         utilization_hours = data.get("utilizationHours", 8)
         if (

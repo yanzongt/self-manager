@@ -18,7 +18,7 @@ from f_analysis.strategies import FREQUENCIES, allocation
 from ._runtime import create_parser, prepare_run
 from .market_data import get_prices
 
-STRATEGY_NAMES = ("buy_hold", "ma_band", "fixed_weight", "cross_sectional_momentum")
+STRATEGY_NAMES = ("buy_hold", "ma_band", "fixed_weight", "cross_sectional_momentum", "dca")
 
 
 def main():
@@ -89,6 +89,7 @@ def main():
             "ma_band": "next_available_close",
             "fixed_weight": "first_close_of_calendar_period",
             "cross_sectional_momentum": "next_available_close_after_ranking",
+            "dca": "first_close_of_period_with_new_cash_only",
         },
         "force_liquidate": False,
     }
@@ -111,6 +112,7 @@ def main():
     columns = [
         "strategy",
         "final_equity",
+        "total_contributed",
         "total_pnl",
         "total_return",
         "cagr",

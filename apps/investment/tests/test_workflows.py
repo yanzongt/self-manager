@@ -43,7 +43,7 @@ class WorkflowTests(unittest.TestCase):
             "rebalance_analysis": (3, 3),
             "etf_pair_scan": (1, 1),
             "single_stock_backtest": (9, 1),
-            "portfolio_backtest": (31, 1),
+            "portfolio_backtest": (39, 1),
         }
         with (
             tempfile.TemporaryDirectory() as temp,
