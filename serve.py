@@ -2,10 +2,12 @@
 
 import argparse
 import copy
+import errno
 import hashlib
 import json
 import math
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -206,6 +208,44 @@ class DataStore:
             return {"ok": True, "revision": hashlib.sha256(raw).hexdigest()}
 
 
+class CheckinStore(DataStore):
+    """Independent check-in records, using the same atomic storage contract."""
+
+    @staticmethod
+    def validate(data):
+        if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+            raise ValueError("无效打卡数据")
+        ids = set()
+
+        def timestamp(value):
+            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                    or not math.isfinite(value) or not 0 <= value <= 8640000000000000):
+                raise ValueError("无效打卡时间")
+
+        for item in data["items"]:
+            if (not isinstance(item, dict) or not isinstance(item.get("id"), str)
+                    or not item["id"] or item["id"] in ids
+                    or not isinstance(item.get("name"), str)
+                    or not 1 <= len(item["name"].strip()) <= 80
+                    or item.get("type") not in ("count", "timer")
+                    or not isinstance(item.get("records"), list)):
+                raise ValueError("无效打卡事项")
+            ids.add(item["id"])
+            active = item.get("activeSince")
+            if active is not None:
+                if item["type"] != "timer":
+                    raise ValueError("计次事项不能计时")
+                timestamp(active)
+            for record in item["records"]:
+                if not isinstance(record, dict):
+                    raise ValueError("无效打卡记录")
+                timestamp(record.get("start"))
+                if item["type"] == "timer":
+                    timestamp(record.get("end"))
+                    if record["end"] < record["start"]:
+                        raise ValueError("结束时间不能早于开始时间")
+
+
 class Scheduler:
     def __init__(self, sender=send_notification):
         self.sender = sender
@@ -376,6 +416,7 @@ def load_investment():
 def create_server(port, scheduler=None, data_path=None, investment=None):
     scheduler = scheduler or Scheduler()
     store = DataStore(data_path or PROJECT_ROOT / "data" / "pdca.json")
+    checkins = CheckinStore(store.path.with_name("checkins.json"))
     token = secrets.token_urlsafe(32)
     origin = f"http://127.0.0.1:{port}"
 
@@ -430,7 +471,7 @@ def create_server(port, scheduler=None, data_path=None, investment=None):
             if not self.allowed():
                 return self.reply(403, {"error": "Invalid host"})
             path = urlsplit(self.path).path
-            if path in ("/pdca", "/strength", "/investment"):
+            if path in ("/pdca", "/strength", "/investment", "/checkins"):
                 self.send_response(302)
                 self.send_header("Location", path + "/")
                 self.send_header("Content-Length", "0")
@@ -444,6 +485,18 @@ def create_server(port, scheduler=None, data_path=None, investment=None):
                     (APPS_ROOT / "portal" / "index.html").read_bytes(),
                     "text/html; charset=utf-8",
                 )
+            if path == "/checkins/":
+                page = (APPS_ROOT / "checkins" / "index.html").read_text().replace(
+                    "/*SERVER_TOKEN*/null", json.dumps(token), 1
+                )
+                return self.reply(200, page.encode(), "text/html; charset=utf-8")
+            if path == "/api/checkins":
+                if not self.authorized():
+                    return self.reply(403, {"error": "Invalid token"})
+                try:
+                    return self.reply(200, checkins.read())
+                except (ValueError, OSError) as exc:
+                    return self.reply(500, {"error": str(exc)})
             if path == "/api/tools":
                 return self.reply(200, {"investment": investment_app is not None})
             if path in ("/strength/", "/strength_training_tracker.html"):
@@ -490,15 +543,16 @@ def create_server(port, scheduler=None, data_path=None, investment=None):
                 return self.reply(403, {"error": "Invalid origin or token"})
             try:
                 length = int(self.headers.get("Content-Length", "0"))
-                limit = 16 * 1024 * 1024 if self.path == "/api/data" else 4096
+                limit = 16 * 1024 * 1024 if self.path in ("/api/data", "/api/checkins") else 4096
                 if not 0 < length <= limit:
                     raise ValueError("无效请求大小")
                 data = json.loads(self.rfile.read(length))
-                if self.path == "/api/data":
+                if self.path in ("/api/data", "/api/checkins"):
                     if not isinstance(data, dict) or "revision" not in data:
                         raise ValueError("缺少数据版本")
                     return self.reply(
-                        200, store.write(data.get("data"), data["revision"])
+                        200, (checkins if self.path == "/api/checkins" else store).write(
+                            data.get("data"), data["revision"])
                     )
                 if self.path == "/api/schedule":
                     scheduler.schedule(data)
@@ -514,10 +568,14 @@ def create_server(port, scheduler=None, data_path=None, investment=None):
                     return self.reply(404, {"error": "Not found"})
                 self.reply(200, {"ok": True})
             except DataConflict as exc:
-                self.reply(409, {"error": str(exc)})
+                message = (
+                    "打卡数据已被其他页面修改，请刷新读取最新记录后重试。"
+                    if self.path == "/api/checkins" else str(exc)
+                )
+                self.reply(409, {"error": message})
             except OSError as exc:
                 self.reply(500, {"error": str(exc)})
-            except (ValueError, RuntimeError) as exc:
+            except (ValueError, TypeError, RuntimeError) as exc:
                 self.reply(400, {"error": str(exc)})
 
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
@@ -553,6 +611,30 @@ def create_server(port, scheduler=None, data_path=None, investment=None):
     return server, scheduler
 
 
+def listening_pids(port):
+    """Find TCP listeners using available system tools, without stopping them."""
+    commands = [
+        ("ss", ["ss", "-H", "-ltnp", f"sport = :{port}"],
+         lambda output: re.findall(r"pid=(\d+)", output)),
+        ("lsof", ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+         lambda output: [line for line in output.splitlines() if line.isdigit()]),
+    ]
+    for tool, command, parse in commands:
+        if not shutil.which(tool):
+            continue
+        try:
+            result = subprocess.run(
+                command, capture_output=True, text=True, timeout=3, check=False
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if result.returncode == 0:
+            pids = sorted({int(pid) for pid in parse(result.stdout)})
+            if pids:
+                return pids
+    return []
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8765)
@@ -578,6 +660,16 @@ def main():
     except OSError as exc:
         if investment:
             investment[0].close()
+        if exc.errno == errno.EADDRINUSE:
+            pids = listening_pids(args.port)
+            detail = (
+                "占用进程 PID：" + ", ".join(str(pid) for pid in pids)
+                if pids else
+                "未能获取占用进程 PID（可能权限不足或缺少 ss / lsof）"
+            )
+            parser.error(
+                f"端口 {args.port} 已被占用；{detail}；可使用 --port 更换端口"
+            )
         parser.error(f"服务无法启动：{exc}；可使用 --port 更换端口")
     stopped = threading.Event()
 
@@ -588,7 +680,7 @@ def main():
     threading.Thread(target=worker, daemon=True).start()
     url = f"http://127.0.0.1:{args.port}"
     print(
-        f"个人主页：{url}\n工具入口：/pdca/ · /strength/ · /investment/\n数据文件：{server.data_store.path.resolve()}\n请保持此进程运行；Ctrl+C 退出。",
+        f"个人主页：{url}\n工具入口：/pdca/ · /strength/ · /investment/ · /checkins/\n数据文件：{server.data_store.path.resolve()}\n请保持此进程运行；Ctrl+C 退出。",
         flush=True,
     )
     if not args.no_browser:

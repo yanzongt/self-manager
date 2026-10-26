@@ -1,6 +1,6 @@
 # Self Manager · 个人工具主页
 
-统一访问行为闭环（PDCA）、力量训练和投资回测的本机工具。电脑与手机宽度均可使用，各工具均可返回个人主页。
+统一访问行为闭环（PDCA）、力量训练、日常打卡和投资回测的本机工具。电脑与手机宽度均可使用，各工具均可返回个人主页。
 
 ## 启动
 
@@ -18,11 +18,14 @@
 | 个人主页 | <http://127.0.0.1:8765/> |
 | 行为闭环 · PDCA | <http://127.0.0.1:8765/pdca/> |
 | 力量进阶 | <http://127.0.0.1:8765/strength/> |
+| 日常打卡 | <http://127.0.0.1:8765/checkins/> |
 | 投资回测 | <http://127.0.0.1:8765/investment/> |
 
 `setup.sh` 使用 `apps/investment/pyproject.toml` 和 `uv.lock`，将依赖安装到仓库根目录的 `.venv/`。`start.sh` 优先使用此环境，也兼容投资模块独立安装的 `.venv/`。缺少回测依赖时，仍可用系统 Python 启动首页、PDCA 和力量训练，首页会提示回测未就绪。
 
 启动参数透传给服务器：`./start.sh --no-browser` 不打开浏览器；`./start.sh --port 8877` 更换端口；`--data-file /path/to/pdca.json` 指定 PDCA 数据文件。也可执行 `.venv/bin/python serve.py`。
+
+启动时若端口被占用，会打印端口号及占用进程的 PID（优先使用 `ss`，否则尝试 `lsof`），然后退出；不会自动终止进程。若权限不足或工具不可用，会提示无法获取 PID。可通过 `./start.sh --port 8877` 更换端口。
 
 服务仅监听 `127.0.0.1`，用于本机访问。原 `/pdca_focus.html` 和 `/strength_training_tracker.html` 地址继续可用。保持相同浏览器、域名和端口，力量训练会继续读取原有浏览器数据；若以前直接打开 HTML 或用其他端口，请先在原地址导出完整备份，再在新入口导入。
 
@@ -37,6 +40,7 @@ self-manager/
 │   ├── portal/index.html    # 个人主页
 │   ├── pdca/index.html      # 行为闭环
 │   ├── strength/index.html  # 力量训练
+│   ├── checkins/index.html  # 日常打卡
 │   └── investment/          # 原 f-analysis，保留独立 Python 项目
 │       ├── f_analysis/      # 回测引擎和网页资源
 │       ├── scripts/         # 命令行与独立服务
@@ -57,6 +61,7 @@ self-manager/
 | 内容 | 保存位置 / 说明 |
 | --- | --- |
 | PDCA 会话、任务、评论、设置 | `data/pdca.json`，上一版为 `data/pdca.json.bak` |
+| 打卡事项、计次记录与计时记录 | `data/checkins.json`，上一版为 `data/checkins.json.bak` |
 | 力量训练记录 | 当前访问地址的浏览器存储，使用页面备份功能导出 |
 | 行情缓存与自建股票池 | `apps/investment/data/` |
 | 投资回测结果 | `apps/investment/outputs/` |
@@ -75,6 +80,7 @@ self-manager/
 .venv/bin/python -m unittest discover -s tests -v
 (cd apps/investment && ../../.venv/bin/python -m unittest discover -s tests -v)
 node tests/test_storage.js
+node tests/test_checkins.js
 ```
 
 浏览器交互验证需要 Playwright 和 Chrome：
@@ -85,3 +91,9 @@ PLAYWRIGHT_CORE=/path/to/playwright-core node tests/test_strength.js
 ```
 
 投资网页的可选 DOM 测试见投资模块说明。
+
+## 日常打卡
+
+在首页进入“日常打卡”，添加事项时选择“按次数”或“按时间”。计次事项点击 `+1` 保存一次打卡时间并更新累计次数；计时事项点击开始，再次点击结束，保存起止时间。刷新或关闭页面不终止计时，重新打开后可结束。
+
+页面展示今日汇总、每个事项的累计值与完整记录，以及最近 7 / 30 天的每日次数和时长图表，可筛选单个事项。统计使用浏览器本地时区，跨午夜的计时按每天实际经过的时长拆分；进行中的计时也计入统计。数据使用独立 JSON 文件保存，支持原子写入、上一版备份及多页面冲突检测。若提示保存失败，请刷新读取最新记录后再操作。自定义 `--data-file` 时，打卡文件位于指定 PDCA 文件的同一目录，文件名为 `checkins.json`。
