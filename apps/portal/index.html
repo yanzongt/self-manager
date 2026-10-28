@@ -12,7 +12,7 @@
 <header class="sm-header sm-container"><div class="sm-brand"><span class="sm-mark" aria-hidden="true">s</span>Self Manager<span style="font-weight:400;color:#a3aa9b"> / </span>个人主页</div><time class="date" id="date"></time></header>
 <main class="sm-container">
 <section class="intro"><div><p class="eyebrow">A LITTLE BETTER, EVERY DAY</p><h1>把时间，留给重要的事。</h1><p>专注当下，持续训练，理性投资。这里是你的个人工具空间。</p></div><div class="daily" aria-hidden="true">Small steps.<br>Lasting progress.</div></section>
-<div class="section-label">我的工具 <span class="count">04</span></div>
+<div class="section-label">我的工具 <span class="count">05</span></div>
 <nav class="tools" aria-label="个人工具">
 <a class="tool" href="/pdca/" style="--accent:#567452;--tint:#eaf0e4">
 <div class="card-top"><span class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 1-5-7M20 3l-8 9-3-3"/><path d="M20 7V3h-4"/></svg></span><span class="number">01</span></div>
@@ -30,16 +30,22 @@
 <div class="card-top"><span class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v16H5zM8 3v4M16 3v4M8 14l3 3 5-6"/></svg></span><span class="number">04</span></div>
 <p class="english">SMALL STEPS, EVERY DAY</p><h2>日常打卡</h2><p class="description">为每一次坚持留下记录。按次数打卡，或开始一段计时，在每日图表中看见积累。</p>
 <div class="card-bottom"><span class="tags">计次打卡 · 时长记录 · 每日统计</span><span class="arrow" aria-hidden="true">↗</span></div></a>
+<a class="tool" href="/sensor-fov/" style="--accent:var(--sm-accent);--tint:var(--sm-accent-soft)">
+<div class="card-top"><span class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12 3 4a12 12 0 0 0 0 16zM12 12l9-8a12 12 0 0 1 0 16z"/><circle cx="12" cy="12" r="2"/></svg></span><span class="number">05</span></div>
+<p class="english">SENSOR FIELD OF VIEW</p><h2>传感器视场</h2><p class="description">配置传感器的位置、姿态和视场角。在三维空间中检查激光雷达、相机与超声波的覆盖范围。</p>
+<div class="card-bottom"><span class="tags">三维视场 · 安装布局 · 配置导入导出</span><span class="arrow" aria-hidden="true">↗</span></div></a>
 </nav>
-<aside class="note"><span class="dot" aria-hidden="true"></span><div><p><strong>你的工具，运行在本机。</strong> PDCA 和打卡数据保存在本机文件，训练记录保存在当前浏览器，回测结果保存在项目目录。请定期备份。</p><span id="service-status" role="status">正在检查回测服务…</span></div></aside>
+<aside class="note"><span class="dot" aria-hidden="true"></span><div><p><strong>你的工具，运行在本机。</strong> PDCA 和打卡数据保存在本机文件，训练记录和传感器配置保存在当前浏览器，回测结果保存在项目目录。请定期备份。</p><span id="service-status" role="status">正在检查回测服务…</span></div></aside>
 </main>
 <footer class="sm-container"><span class="footer-name">SELF MANAGER / 个人工具空间</span><span>行动有方向，成长有记录。</span></footer>
 <script>
+const toolCount = document.querySelectorAll(".tools .tool").length;
+document.querySelector(".count").textContent = String(toolCount).padStart(2, "0");
 const date = new Date();
 document.querySelector('#date').dateTime = date.toISOString();
 document.querySelector('#date').textContent = new Intl.DateTimeFormat('zh-CN', {month:'long',day:'numeric',weekday:'long'}).format(date);
 fetch('/api/tools').then(response => {if (!response.ok) throw new Error(); return response.json()}).then(data => {
- document.querySelector('#service-status').textContent = data.investment ? '四个工具已就绪 · 一个服务，统一访问' : '回测服务未加载，请使用 ./start.sh 启动；详情见启动终端。';
+ document.querySelector('#service-status').textContent = data.investment ? `${toolCount} 个工具已就绪 · 一个服务，统一访问` : '回测服务未加载，请使用 ./start.sh 启动；详情见启动终端。';
 }).catch(() => {document.querySelector('#service-status').textContent = '无法读取服务状态，请检查本地服务是否仍在运行。'});
 </script>
 </body>

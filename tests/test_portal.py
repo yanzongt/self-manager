@@ -32,6 +32,7 @@ class PortalTests(WebTests):
             ("/", "把时间，留给重要的事。"),
             ("/pdca/", "window.PDCA_NATIVE_TOKEN="),
             ("/strength/", "strengthTracker_v1"),
+            ("/sensor-fov/", "传感器视场"),
             ("/pdca_focus.html", "window.PDCA_NATIVE_TOKEN="),
             ("/strength_training_tracker.html", "strengthTracker_v1"),
         ]:
@@ -40,7 +41,7 @@ class PortalTests(WebTests):
                 self.assertEqual(status, 200)
                 self.assertIn(expected.encode(), body)
         self.assertIn(b'"investment": true', super().http("/api/tools")[2])
-        for path in ("/pdca", "/strength", "/investment"):
+        for path in ("/pdca", "/strength", "/investment", "/sensor-fov"):
             self.assertEqual(super().http(path)[0], 200)  # follows redirect
         self.assertEqual(super().http("/serve.py")[0], 404)
         self.assertEqual(super().http("/data/pdca.json")[0], 404)

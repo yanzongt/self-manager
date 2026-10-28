@@ -1,6 +1,6 @@
 # 页面统一风格
 
-个人主页是 Self Manager 的视觉基准：米白背景、深绿正文、柔和绿色点缀、浅色卡片、细边框和留白。主页、PDCA 和打卡已共用 `apps/shared/theme.css`。后续新增页面必须沿用这一主题。
+个人主页是 Self Manager 的视觉基准：米白背景、深绿正文、柔和绿色点缀、浅色卡片、细边框和留白。主页、PDCA、打卡和传感器视场已共用 `apps/shared/theme.css`。后续新增页面必须沿用这一主题。
 
 ## 引用共享样式
 
@@ -37,6 +37,7 @@ import './style.css'
 ```sh
 npm run build --prefix apps/pdca
 npm run build --prefix apps/checkins
+npm run build --prefix apps/sensor-fov
 ```
 
 检查桌面与手机宽度下的页头、正文、表单、弹窗和图表，确保没有整页横向溢出，并保留键盘焦点提示。已有页面的业务回归命令见根目录 README。

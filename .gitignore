@@ -23,3 +23,7 @@ node_modules/
 # Generated PDCA dependencies, lockfile, and build output
 /apps/pdca/.generated/
 /apps/pdca/node_modules
+
+# Sensor FOV frontend dependencies, lockfile, and build output
+/apps/sensor-fov/.generated/
+/apps/sensor-fov/node_modules

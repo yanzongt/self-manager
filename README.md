@@ -1,6 +1,6 @@
 # Self Manager · 个人工具主页
 
-统一访问行为闭环（PDCA）、力量训练、日常打卡和投资回测的本机工具。电脑与手机宽度均可使用，各工具均可返回个人主页。
+统一访问行为闭环（PDCA）、力量训练、日常打卡、投资回测和传感器视场的本机工具。电脑与手机宽度均可使用，各工具均可返回个人主页。
 
 ## 启动
 
@@ -11,7 +11,7 @@
 ./start.sh
 ```
 
-首次启动会使用 Node.js（22.12+）和 npm 安装并构建 PDCA 与打卡前端；之后启动使用本机构建结果。自动打开 <http://127.0.0.1:8765>。只启动一个进程、监听一个端口，无需分别启动回测服务。两个脚本均支持从任意目录调用。
+首次启动会使用 Node.js（22.12+）和 npm 安装并构建 PDCA、打卡与传感器视场前端；之后启动使用本机构建结果。自动打开 <http://127.0.0.1:8765>。只启动一个进程、监听一个端口，无需分别启动回测服务。两个脚本均支持从任意目录调用。
 
 | 入口 | 地址 |
 | --- | --- |
@@ -20,6 +20,7 @@
 | 力量进阶 | <http://127.0.0.1:8765/strength/> |
 | 日常打卡 | <http://127.0.0.1:8765/checkins/> |
 | 投资回测 | <http://127.0.0.1:8765/investment/> |
+| 传感器视场 | <http://127.0.0.1:8765/sensor-fov/> |
 
 `setup.sh` 使用 `apps/investment/pyproject.toml` 和 `uv.lock`，将依赖安装到仓库根目录的 `.venv/`。`start.sh` 优先使用此环境，也兼容投资模块独立安装的 `.venv/`。缺少回测依赖时，仍可用系统 Python 启动首页、PDCA 和力量训练，首页会提示回测未就绪。
 
@@ -41,6 +42,7 @@ self-manager/
 │   ├── pdca/                # 行为闭环（Vue + TypeScript + Vite）
 │   ├── strength/index.html  # 力量训练
 │   ├── checkins/            # 日常打卡（Vue + TypeScript + Vite）
+│   ├── sensor-fov/          # 传感器视场（Vue + TypeScript + Three.js）
 │   └── investment/          # 原 f-analysis，保留独立 Python 项目
 │       ├── f_analysis/      # 回测引擎和网页资源
 │       ├── scripts/         # 命令行与独立服务
@@ -63,6 +65,7 @@ self-manager/
 | PDCA 会话、任务、评论、设置 | `data/pdca.json`，上一版为 `data/pdca.json.bak` |
 | 打卡事项、计次记录与计时记录 | `data/checkins.json`，上一版为 `data/checkins.json.bak` |
 | 力量训练记录 | 当前访问地址的浏览器存储，使用页面备份功能导出 |
+| 传感器布局 | 当前访问地址的浏览器存储，使用传感器页面导出 JSON |
 | 行情缓存与自建股票池 | `apps/investment/data/` |
 | 投资回测结果 | `apps/investment/outputs/` |
 
@@ -70,6 +73,7 @@ self-manager/
 
 - [行为闭环：提醒、存储、番茄钟、四象限与统计](docs/pdca.md)
 - [投资分析：环境、网页、CLI、策略与结果说明](apps/investment/README.md)（其中的命令从 `apps/investment/` 执行）
+- [传感器视场：使用、坐标约定与开发](apps/sensor-fov/README.md)
 - [本次目录整理与路径对应](docs/layout.md)
 
 ## 验证
@@ -83,6 +87,9 @@ npm test --prefix apps/pdca
 ./apps/checkins/setup.sh
 npm run build --prefix apps/checkins
 npm test --prefix apps/checkins
+./apps/sensor-fov/setup.sh
+npm run build --prefix apps/sensor-fov
+npm test --prefix apps/sensor-fov
 .venv/bin/python -m unittest discover -s tests -v
 (cd apps/investment && ../../.venv/bin/python -m unittest discover -s tests -v)
 ```
@@ -93,6 +100,7 @@ npm test --prefix apps/checkins
 npm run test:browser --prefix apps/pdca
 npm run test:storage --prefix apps/pdca
 npm run test:browser --prefix apps/checkins
+npm run test:browser --prefix apps/sensor-fov
 ```
 
 力量训练的浏览器交互验证可复用已安装的 Playwright：
@@ -121,4 +129,4 @@ PDCA 的依赖、自动生成的锁文件和构建结果均放在 `apps/pdca/.ge
 
 ## 页面统一风格
 
-主页、PDCA 和打卡共同引用 `apps/shared/theme.css`，统一采用米白背景、深绿文字、柔和绿色点缀和浅色卡片。新增页面应使用共享的 `sm-*` 布局和控件类，避免另设全站字体和配色。开发要求见 [AGENTS.md](AGENTS.md)，样式约定和新增页面模板见 [统一风格说明](docs/ui-style.md)。修改共享主题后，需要重新构建 PDCA 与打卡前端。
+主页、PDCA、打卡和传感器视场共同引用 `apps/shared/theme.css`，统一采用米白背景、深绿文字、柔和绿色点缀和浅色卡片。新增页面应使用共享的 `sm-*` 布局和控件类，避免另设全站字体和配色。开发要求见 [AGENTS.md](AGENTS.md)，样式约定和新增页面模板见 [统一风格说明](docs/ui-style.md)。修改共享主题后，需要重新构建 PDCA、打卡与传感器视场前端。

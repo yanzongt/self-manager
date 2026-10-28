@@ -471,7 +471,7 @@ def create_server(port, scheduler=None, data_path=None, investment=None):
             if not self.allowed():
                 return self.reply(403, {"error": "Invalid host"})
             path = urlsplit(self.path).path
-            if path in ("/pdca", "/strength", "/investment", "/checkins"):
+            if path in ("/pdca", "/strength", "/investment", "/checkins", "/sensor-fov"):
                 self.send_response(302)
                 self.send_header("Location", path + "/")
                 self.send_header("Content-Length", "0")
@@ -488,6 +488,11 @@ def create_server(port, scheduler=None, data_path=None, investment=None):
             if path in ("/shared/theme.css", "/portal/style.css"):
                 stylesheet = APPS_ROOT / path.lstrip("/")
                 return self.reply(200, stylesheet.read_bytes(), "text/css; charset=utf-8")
+            if path == "/sensor-fov/":
+                page = APPS_ROOT / "sensor-fov" / ".generated" / "static" / "index.html"
+                if not page.is_file():
+                    return self.reply(503, {"error": "传感器视场前端尚未构建，请运行 apps/sensor-fov/setup.sh 和 npm run build --prefix apps/sensor-fov"})
+                return self.reply(200, page.read_bytes(), "text/html; charset=utf-8")
             if path == "/checkins/":
                 page_path = APPS_ROOT / "checkins" / ".generated" / "static" / "index.html"
                 if not page_path.is_file():
@@ -496,7 +501,7 @@ def create_server(port, scheduler=None, data_path=None, investment=None):
                     "/*SERVER_TOKEN*/null", json.dumps(token), 1
                 )
                 return self.reply(200, page.encode(), "text/html; charset=utf-8")
-            if path.startswith(("/checkins/assets/", "/pdca/assets/")):
+            if path.startswith(("/checkins/assets/", "/pdca/assets/", "/sensor-fov/assets/")):
                 app_name = path.split("/")[1]
                 assets = (APPS_ROOT / app_name / ".generated" / "static" / "assets").resolve()
                 asset = (assets / path.removeprefix(f"/{app_name}/assets/")).resolve()
@@ -690,7 +695,7 @@ def main():
     threading.Thread(target=worker, daemon=True).start()
     url = f"http://127.0.0.1:{args.port}"
     print(
-        f"个人主页：{url}\n工具入口：/pdca/ · /strength/ · /investment/ · /checkins/\n数据文件：{server.data_store.path.resolve()}\n请保持此进程运行；Ctrl+C 退出。",
+        f"个人主页：{url}\n工具入口：/pdca/ · /strength/ · /investment/ · /checkins/ · /sensor-fov/\n数据文件：{server.data_store.path.resolve()}\n请保持此进程运行；Ctrl+C 退出。",
         flush=True,
     )
     if not args.no_browser:
