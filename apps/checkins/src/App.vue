@@ -80,15 +80,15 @@ onMounted(() => {
 onUnmounted(() => clearInterval(timer));
 </script>
 <template>
-  <header>
-    <div class="brand"><span class="mark">s</span>Self Manager / 日常打卡</div>
-    <a href="/">← 返回主页</a>
+  <header class="sm-header sm-container">
+    <div class="sm-brand"><span class="sm-mark">s</span>Self Manager / 日常打卡</div>
+    <a href="/" class="sm-back">← 返回主页</a>
   </header>
-  <main>
+  <main class="sm-container">
     <section class="intro">
       <div>
-        <p class="eyebrow">SMALL STEPS, EVERY DAY</p>
-        <h1>每一次坚持，都算数。</h1>
+        <p class="sm-eyebrow">SMALL STEPS, EVERY DAY</p>
+        <h1 class="sm-title">每一次坚持，都算数。</h1>
         <p class="muted">记录行动与投入，让日常的积累清晰可见。</p>
       </div>
       <button
@@ -189,7 +189,7 @@ onUnmounted(() => clearInterval(timer));
               :days="days"
               :values="chartStats.counts"
               unit="次"
-              color="#729064"
+              color="var(--sm-chart)"
             />
           </div>
         </div>
@@ -198,13 +198,13 @@ onUnmounted(() => clearInterval(timer));
             <span><i class="amber"></i>每日时长 · 分钟</span>
           </div>
           <div id="time-chart" class="chart-wrap">
-            <Chart :days="days" :values="minutes" unit="分钟" color="#c79c68" />
+            <Chart :days="days" :values="minutes" unit="分钟" color="var(--sm-chart-secondary)" />
           </div>
         </div>
       </div>
     </section>
   </main>
-  <footer>
+  <footer class="sm-container">
     记录保存在本机 data/checkins.json ·
     计时中的事项在刷新或关闭页面后仍会继续，返回后点击结束。
   </footer>

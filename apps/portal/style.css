@@ -1,0 +1,241 @@
+.date {
+  font-size: 13px;
+  color: var(--sm-muted);
+}
+.intro {
+  padding: 70px 0 46px;
+  display: flex;
+  justify-content: space-between;
+  gap: 30px;
+  align-items: flex-end;
+}
+.eyebrow {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 2.4px;
+  color: #6e7d69;
+  margin: 0 0 17px;
+}
+h1 {
+  font-size: clamp(32px, 4vw, 48px);
+  line-height: 1.3;
+  letter-spacing: -1.5px;
+  font-weight: 550;
+  margin: 0 0 18px;
+}
+.intro p:last-child {
+  color: var(--sm-muted);
+  margin: 0;
+}
+.daily {
+  font:
+    italic 21px/1.7 Georgia,
+    serif;
+  color: #8a927c;
+  white-space: nowrap;
+  padding-bottom: 3px;
+}
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  margin: 22px 0 19px;
+}
+.section-label::after {
+  content: "";
+  height: 1px;
+  background: var(--sm-border);
+  flex: 1;
+}
+.count {
+  color: #969b91;
+  font-size: 11px;
+}
+.tools {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+.tool {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  background: #fffefa;
+  border: 1px solid var(--sm-border);
+  border-radius: 16px;
+  padding: 27px;
+  min-height: 365px;
+  transition:
+    transform 0.2s,
+    border-color 0.2s,
+    box-shadow 0.2s;
+  overflow: hidden;
+}
+.tool:hover {
+  transform: translateY(-5px);
+  border-color: #95a38a;
+  box-shadow: 0 12px 32px #243c340c;
+}
+.tool:focus-visible {
+  outline: 3px solid #416d54;
+  outline-offset: 5px;
+}
+.card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: var(--tint);
+  color: var(--accent);
+}
+.icon svg {
+  width: 25px;
+  height: 25px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.number {
+  font:
+    13px Georgia,
+    serif;
+  color: #a4aa9c;
+}
+.english {
+  color: var(--accent);
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  margin: 28px 0 4px;
+}
+h2 {
+  font-size: 24px;
+  font-weight: 550;
+  margin: 0 0 12px;
+  letter-spacing: -0.6px;
+}
+.description {
+  color: var(--sm-muted);
+  font-size: 13px;
+  margin: 0 0 28px;
+  line-height: 1.9;
+}
+.card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #e9e9e1;
+  padding-top: 18px;
+  margin-top: auto;
+}
+.tags {
+  font-size: 11px;
+  color: #808876;
+}
+.arrow {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--tint);
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  font-size: 18px;
+}
+.note {
+  display: flex;
+  gap: 13px;
+  align-items: flex-start;
+  border: 1px solid var(--sm-border);
+  border-radius: 12px;
+  padding: 19px 23px;
+  margin: 28px 0 65px;
+  font-size: 12px;
+  color: var(--sm-muted);
+}
+.dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #64815b;
+  display: inline-block;
+  margin-top: 7px;
+}
+.note p {
+  margin: 0;
+}
+.note strong {
+  color: #56634e;
+  font-weight: 550;
+}
+#service-status {
+  display: block;
+  font-size: 11px;
+  margin-top: 5px;
+}
+footer {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid var(--sm-border);
+  padding: 23px 0 30px;
+  color: #939a8c;
+  font-size: 11px;
+}
+.footer-name {
+  letter-spacing: 1.5px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tool {
+    transition: none;
+  }
+}
+@media (max-width: 850px) {
+  .tools {
+    gap: 13px;
+  }
+  .tool {
+    padding: 22px;
+  }
+  .daily {
+    display: none;
+  }
+}
+@media (max-width: 660px) {
+  .date {
+    font-size: 11px;
+  }
+  .intro {
+    padding: 40px 0 24px;
+  }
+  .tools {
+    grid-template-columns: 1fr;
+  }
+  .tool {
+    min-height: 280px;
+    padding: 24px;
+  }
+  .english {
+    margin-top: 19px;
+  }
+  .description {
+    margin-bottom: 20px;
+  }
+  .note {
+    margin-bottom: 40px;
+  }
+  footer {
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+}

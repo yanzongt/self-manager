@@ -290,6 +290,43 @@ class HTTPTests(unittest.TestCase):
             urlopen(self.url + "/investment/")
         self.assertEqual(unavailable.exception.code, 503)
 
+    def test_shared_theme_and_home_stylesheets(self):
+        for path in ("/shared/theme.css", "/portal/style.css"):
+            with urlopen(self.url + path) as response:
+                self.assertEqual(response.headers["Content-Type"], "text/css; charset=utf-8")
+                self.assertTrue(response.read())
+        with urlopen(self.url + "/") as response:
+            page = response.read().decode()
+            self.assertIn('href="/shared/theme.css"', page)
+        with self.assertRaises(HTTPError) as hidden:
+            urlopen(self.url + "/shared/page-template.html")
+        self.assertEqual(hidden.exception.code, 404)
+
+    def test_pdca_assets_and_legacy_entry(self):
+        import re
+        from unittest.mock import patch
+
+        for entry in ("/pdca/", "/pdca_focus.html"):
+            with urlopen(self.url + entry) as response:
+                page = response.read().decode()
+            self.assertIn("window.PDCA_NATIVE_TOKEN=", page)
+            self.assertNotIn("/*SERVER_TOKEN*/null", page)
+            assets = re.findall(r'(?:src|href)="(/pdca/assets/[^"]+)"', page)
+            self.assertEqual(len(assets), 2)
+            for asset in assets:
+                with urlopen(self.url + asset) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertIn(response.headers["Content-Type"].split(";")[0],
+                                  ("text/javascript", "text/css"))
+        for path in ("/pdca/assets/missing.js", "/pdca/assets/../../index.html"):
+            with self.assertRaises(HTTPError) as missing:
+                urlopen(self.url + path)
+            self.assertEqual(missing.exception.code, 404)
+        with patch("serve.PAGE", Path(self.folder.name) / "not-built.html"):
+            with self.assertRaises(HTTPError) as missing_build:
+                urlopen(self.url + "/pdca/")
+            self.assertEqual(missing_build.exception.code, 503)
+
     def test_page_and_authenticated_schedule(self):
         import re
 

@@ -4,12 +4,12 @@
 
 ## PDCA 提醒与使用
 
-进入 PDCA 后点击「发送测试提醒」验证桌面通知和提示音。PDCA 使用 Python 标准库和系统 `notify-send`，无需额外 Python 依赖。
+进入 PDCA 后点击「发送测试提醒」验证桌面通知和提示音。PDCA 后端使用 Python 标准库和系统 `notify-send`；前端使用 Vue、TypeScript 和 Vite，首次运行 `./start.sh` 会安装依赖并构建，需要 Node.js 22.12+ 和 npm。
 如缺少通知组件：`sudo apt install libnotify-bin xfce4-notifyd`。
 
 计时开始、延期和结束时会同步系统提醒。只要终端中的服务仍在运行，标签页在后台甚至关闭后也会发送已安排的提醒。提示音和复盘层仍需要页面运行；系统挂起期间不能提醒，恢复后发送逾期提醒。Ctrl+C 停止服务。服务重启后会从本机数据文件恢复已保存的计时提醒；页面刷新后恢复计时界面。
 
-需要通过 `python3 serve.py` 打开页面才能读写本机数据文件。直接打开 HTML 时只能导出该地址下的旧浏览器数据。使用浏览器通知必须允许网站通知并保持标签页打开，浏览器休眠或后台节流可能影响提醒。提示音在点击「开始计时」或测试按钮时初始化，刷新后需再次点击测试按钮启用声音。
+建议通过 `./start.sh` 启动后打开页面；直接运行 `python3 serve.py` 前需先构建前端。新版入口 HTML 需要服务提供构建资源，不能直接双击使用。使用浏览器通知必须允许网站通知并保持标签页打开，浏览器休眠或后台节流可能影响提醒。提示音在点击「开始计时」或测试按钮时初始化，刷新后需再次点击测试按钮启用声音。
 
 如果测试通知未显示，在 XFCE 的「设置 → 通知」检查勿扰模式和应用通知设置。也可在桌面终端执行 `notify-send '测试' '桌面提醒'` 检查系统通道。网页的测试成功仅代表通知请求成功，不能判断通知气泡是否被桌面设置隐藏。
 
@@ -29,7 +29,7 @@
 python3 serve.py --data-file /path/to/pdca.json
 ```
 
-验证文件读写和通知调度：`python3 -m unittest discover -s tests -p test_serve.py -v`。验证页面迁移、保存、评论、番茄钟、导入、失败重试和冲突处理：`node tests/test_storage.js`。
+验证文件读写和通知调度：`python3 -m unittest discover -s tests -p test_serve.py -v`。验证页面迁移、保存、评论、番茄钟、导入、失败重试和冲突处理：`npm run test:storage --prefix apps/pdca`（需要 Chrome）。纯计时和存储队列测试：`npm test --prefix apps/pdca`。
 
 ## 番茄钟
 
@@ -57,6 +57,6 @@ python3 serve.py --data-file /path/to/pdca.json
 
 历史记录每行的「导出记录 TXT」可单独导出该次完整会话，包含开始和结束时间、项目、目的、计划/延长/实际时长、完成状态、复盘、阶段复盘及全部评论和添加时间。
 
-HTML 文件保存界面和程序代码；数据由 `serve.py` 写入本机文件，不会写回 HTML。迁移到其他电脑时可复制整个 `data/` 目录，或在新服务页面恢复导出的 JSON 备份。
+Vue 组件、样式和 TypeScript 模块保存在 `apps/pdca/src/`；生成物保存在被 Git 忽略的 `apps/pdca/.generated/`。修改源码后运行 `npm run build --prefix apps/pdca`。数据由 `serve.py` 写入本机文件，不会写回前端源码。迁移到其他电脑时可复制整个 `data/` 目录，或在新服务页面恢复导出的 JSON 备份。
 
-浏览器交互验证：`PLAYWRIGHT_CORE=/path/to/playwright-core node tests/test_pdca.js`（需要 Chrome，可用 `CHROME_PATH` 指定路径）。测试使用临时数据，覆盖番茄钟初始阶段、分页筛选、拖动与分类、持久化和手机布局。
+浏览器交互验证：`npm run test:browser --prefix apps/pdca`（需要 Chrome，可用 `CHROME_PATH` 指定路径）。测试使用临时数据，覆盖番茄钟初始阶段、分页筛选、拖动与分类、持久化和手机布局。

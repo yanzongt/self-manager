@@ -1,0 +1,226 @@
+/* Shared Self Manager theme. Page styles should reference these tokens. */
+:root {
+  color-scheme: light;
+  font-synthesis: none;
+  --sm-bg: #f6f5f0;
+  --sm-surface: #fffefa;
+  --sm-surface-muted: #eeeee5;
+  --sm-input-bg: #ffffff;
+  --sm-text: #243c34;
+  --sm-muted: #737b73;
+  --sm-subtle: #858d80;
+  --sm-border: #dedfd5;
+  --sm-accent: #547451;
+  --sm-accent-hover: #3e5b3b;
+  --sm-accent-soft: #eaf0e4;
+  --sm-accent-border: #b6c6a8;
+  --sm-focus: #91ad80;
+  --sm-warning: #90683d;
+  --sm-warning-soft: #f6eddf;
+  --sm-danger: #a55146;
+  --sm-danger-soft: #f7ebe7;
+  --sm-info: #617b91;
+  --sm-chart: #729064;
+  --sm-chart-secondary: #c79c68;
+  --sm-overlay: #243c3459;
+  --sm-shadow: 0 12px 32px #243c340c;
+  --sm-dialog-shadow: 0 24px 64px #243c3426;
+  --sm-radius: 14px;
+  --sm-control-radius: 9px;
+  --sm-page-width: 1120px;
+  --sm-font:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--sm-bg);
+  color: var(--sm-text);
+  font: 15px/1.65 var(--sm-font);
+}
+a {
+  color: inherit;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button,
+a,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+:where(button, a, input, select, textarea, summary):focus-visible {
+  outline: 3px solid var(--sm-focus);
+  outline-offset: 3px;
+}
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--sm-accent);
+}
+
+.sm-container {
+  width: min(var(--sm-page-width), calc(100% - 64px));
+  margin-inline: auto;
+}
+.sm-header {
+  min-height: 106px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--sm-border);
+}
+.sm-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.4px;
+}
+.sm-mark {
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--sm-text);
+  color: var(--sm-surface);
+  font:
+    400 24px Georgia,
+    serif;
+}
+.sm-back {
+  color: var(--sm-muted);
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.sm-back:hover {
+  color: var(--sm-accent);
+}
+.sm-intro {
+  padding-block: 48px 30px;
+}
+.sm-eyebrow {
+  margin: 0 0 14px;
+  color: var(--sm-accent);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 2.4px;
+}
+.sm-title {
+  margin: 0 0 14px;
+  font-size: clamp(32px, 4vw, 48px);
+  line-height: 1.3;
+  font-weight: 550;
+  letter-spacing: -1.5px;
+}
+.sm-description {
+  margin: 0;
+  color: var(--sm-muted);
+  font-size: 14px;
+}
+.sm-panel {
+  background: var(--sm-surface);
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-radius);
+  padding: 24px;
+}
+.sm-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-control-radius);
+  background: var(--sm-surface);
+  color: var(--sm-text);
+  padding: 9px 16px;
+  text-decoration: none;
+}
+.sm-button:hover {
+  background: var(--sm-accent-soft);
+  border-color: var(--sm-accent-border);
+}
+.sm-button-primary {
+  background: var(--sm-text);
+  border-color: var(--sm-text);
+  color: var(--sm-surface);
+}
+.sm-button-primary:hover {
+  background: var(--sm-accent-hover);
+  color: var(--sm-surface);
+}
+.sm-control {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-control-radius);
+  background: var(--sm-input-bg);
+  color: var(--sm-text);
+}
+.sm-control::placeholder {
+  color: var(--sm-subtle);
+}
+.sm-footer {
+  margin-top: 30px;
+  padding-block: 23px 30px;
+  border-top: 1px solid var(--sm-border);
+  color: var(--sm-muted);
+  font-size: 11px;
+}
+
+@media (max-width: 660px) {
+  .sm-container {
+    width: calc(100% - 36px);
+  }
+  .sm-header {
+    flex-wrap: wrap;
+    padding-block: 18px;
+    min-height: 80px;
+    gap: 12px;
+  }
+  .sm-brand {
+    gap: 9px;
+    font-size: 15px;
+  }
+  .sm-intro {
+    padding-block: 32px 24px;
+  }
+  .sm-panel {
+    padding: 18px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}

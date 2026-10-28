@@ -19,3 +19,7 @@ node_modules/
 /apps/checkins/.generated/
 
 /apps/checkins/node_modules
+
+# Generated PDCA dependencies, lockfile, and build output
+/apps/pdca/.generated/
+/apps/pdca/node_modules

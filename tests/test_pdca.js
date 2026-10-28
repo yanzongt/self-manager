@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 const readline = require('node:readline');
-const { chromium } = require(process.env.PLAYWRIGHT_CORE || 'playwright');
+const { chromium } = require(process.env.PLAYWRIGHT_CORE || '../apps/pdca/.generated/node_modules/playwright-core');
 const fixture = {
   tags: ['工作', '学习'], active: null, pomodoro: null,
   pomoSettings: { workMinutes: 25, breakMinutes: 5, autoSwitch: true },
@@ -49,6 +49,8 @@ server.stderr.on('data', value => { diagnostic += value; });
     const saved = () => page.waitForFunction(() => document.querySelector('#storageStatus').textContent.startsWith('已保存'));
     await page.goto(url + '/pdca/');
     await page.waitForFunction(() => !document.querySelector('#appContent').inert);
+    assert(!await page.locator('#workItemCancel').isVisible());
+    assert(!await page.locator('#pomoStop').isVisible());
     assert.equal(await page.locator('#utilizationHours').inputValue(), '8');
     assert.equal(await page.locator('#utilizationChart [data-date="2026-10-11"]').getAttribute('data-percent'), '100');
     assert.equal(await page.locator('#utilizationChart [data-date="2026-10-12"]').getAttribute('data-percent'), '125');
@@ -133,6 +135,30 @@ server.stderr.on('data', value => { diagnostic += value; });
       await page.locator('#historyFrom').locator('xpath=ancestor::section[1]').screenshot({path: process.env.PDCA_SCREENSHOT_PREFIX + '-history.png'});
       await page.locator('#workQuadrants').screenshot({path: process.env.PDCA_SCREENSHOT_PREFIX + '-work.png'});
     }
+    // The landing page, PDCA and check-ins share the same theme contract.
+    const themePage = await context.newPage();
+    await themePage.setViewportSize({width: 390, height: 844});
+    const themeStyles = [];
+    for (const path of ['/', '/pdca/', '/checkins/']) {
+      await themePage.goto(url + path);
+      await themePage.locator('.sm-mark').waitFor();
+      themeStyles.push(await themePage.evaluate(() => {
+        const body = getComputedStyle(document.body), mark = getComputedStyle(document.querySelector('.sm-mark'));
+        return { background: body.backgroundColor, color: body.color, font: body.fontFamily,
+          mark: mark.backgroundColor, markWidth: mark.width, markHeight: mark.height };
+      }));
+      assert(await themePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      if (process.env.PDCA_SCREENSHOT_PREFIX) {
+        const name = path === '/' ? 'home' : path.replaceAll('/', '');
+        await themePage.screenshot({path: process.env.PDCA_SCREENSHOT_PREFIX + '-' + name + '-mobile.png'});
+        await themePage.setViewportSize({width: 1440, height: 1000});
+        await themePage.screenshot({path: process.env.PDCA_SCREENSHOT_PREFIX + '-' + name + '-desktop.png'});
+        await themePage.setViewportSize({width: 390, height: 844});
+      }
+    }
+    assert.deepEqual(themeStyles[1], themeStyles[0]);
+    assert.deepEqual(themeStyles[2], themeStyles[0]);
+    await themePage.close();
     assert.deepEqual(errors, []);
     console.log('PDCA browser checks passed: daily utilization/target persistence/ranges, Work/Break starts, review controls, pagination, date/tag filters, full backup, last-page deletion, dropdown and drag moves, edit, refresh persistence and mobile layout.');
   } finally {

@@ -22,7 +22,7 @@ from urllib.parse import urlsplit
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 APPS_ROOT = PROJECT_ROOT / "apps"
-PAGE = APPS_ROOT / "pdca" / "index.html"
+PAGE = APPS_ROOT / "pdca" / ".generated" / "static" / "index.html"
 
 
 def send_notification(title, body):
@@ -485,6 +485,9 @@ def create_server(port, scheduler=None, data_path=None, investment=None):
                     (APPS_ROOT / "portal" / "index.html").read_bytes(),
                     "text/html; charset=utf-8",
                 )
+            if path in ("/shared/theme.css", "/portal/style.css"):
+                stylesheet = APPS_ROOT / path.lstrip("/")
+                return self.reply(200, stylesheet.read_bytes(), "text/css; charset=utf-8")
             if path == "/checkins/":
                 page_path = APPS_ROOT / "checkins" / ".generated" / "static" / "index.html"
                 if not page_path.is_file():
@@ -493,9 +496,10 @@ def create_server(port, scheduler=None, data_path=None, investment=None):
                     "/*SERVER_TOKEN*/null", json.dumps(token), 1
                 )
                 return self.reply(200, page.encode(), "text/html; charset=utf-8")
-            if path.startswith("/checkins/assets/"):
-                assets = (APPS_ROOT / "checkins" / ".generated" / "static" / "assets").resolve()
-                asset = (assets / path.removeprefix("/checkins/assets/")).resolve()
+            if path.startswith(("/checkins/assets/", "/pdca/assets/")):
+                app_name = path.split("/")[1]
+                assets = (APPS_ROOT / app_name / ".generated" / "static" / "assets").resolve()
+                asset = (assets / path.removeprefix(f"/{app_name}/assets/")).resolve()
                 if asset.parent != assets or not asset.is_file() or asset.suffix not in (".js", ".css"):
                     return self.reply(404, {"error": "Not found"})
                 content_type = "text/javascript; charset=utf-8" if asset.suffix == ".js" else "text/css; charset=utf-8"
@@ -516,13 +520,9 @@ def create_server(port, scheduler=None, data_path=None, investment=None):
                     "text/html; charset=utf-8",
                 )
             if path in ("/pdca/", "/pdca_focus.html"):
-                page = PAGE.read_text().replace(
-                    "<script>",
-                    "<script>window.PDCA_NATIVE_TOKEN="
-                    + json.dumps(token)
-                    + ";</script><script>",
-                    1,
-                )
+                if not PAGE.is_file():
+                    return self.reply(503, {"error": "PDCA 前端尚未构建，请运行 apps/pdca/setup.sh 和 npm run build --prefix apps/pdca"})
+                page = PAGE.read_text().replace("/*SERVER_TOKEN*/null", json.dumps(token), 1)
                 return self.reply(200, page.encode(), "text/html; charset=utf-8")
             if self.path == "/api/data":
                 if not self.authorized():

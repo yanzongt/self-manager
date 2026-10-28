@@ -11,7 +11,7 @@
 ./start.sh
 ```
 
-首次启动会使用 Node.js 和 npm 安装并构建打卡前端；之后启动使用本机构建结果。自动打开 <http://127.0.0.1:8765>。只启动一个进程、监听一个端口，无需分别启动回测服务。两个脚本均支持从任意目录调用。
+首次启动会使用 Node.js（22.12+）和 npm 安装并构建 PDCA 与打卡前端；之后启动使用本机构建结果。自动打开 <http://127.0.0.1:8765>。只启动一个进程、监听一个端口，无需分别启动回测服务。两个脚本均支持从任意目录调用。
 
 | 入口 | 地址 |
 | --- | --- |
@@ -38,7 +38,7 @@ self-manager/
 ├── serve.py                 # HTTP 路由、本机存储和提醒调度
 ├── apps/
 │   ├── portal/index.html    # 个人主页
-│   ├── pdca/index.html      # 行为闭环
+│   ├── pdca/                # 行为闭环（Vue + TypeScript + Vite）
 │   ├── strength/index.html  # 力量训练
 │   ├── checkins/            # 日常打卡（Vue + TypeScript + Vite）
 │   └── investment/          # 原 f-analysis，保留独立 Python 项目
@@ -77,20 +77,28 @@ self-manager/
 以下命令从仓库根目录执行，使用临时数据或模拟行情：
 
 ```sh
-.venv/bin/python -m unittest discover -s tests -v
-(cd apps/investment && ../../.venv/bin/python -m unittest discover -s tests -v)
-node tests/test_storage.js
+./apps/pdca/setup.sh
+npm run build --prefix apps/pdca
+npm test --prefix apps/pdca
 ./apps/checkins/setup.sh
 npm run build --prefix apps/checkins
 npm test --prefix apps/checkins
+.venv/bin/python -m unittest discover -s tests -v
+(cd apps/investment && ../../.venv/bin/python -m unittest discover -s tests -v)
+```
+
+前端浏览器测试使用临时数据，需要本机 Chrome：
+
+```sh
+npm run test:browser --prefix apps/pdca
+npm run test:storage --prefix apps/pdca
 npm run test:browser --prefix apps/checkins
 ```
 
-浏览器交互验证需要 Playwright 和 Chrome：
+力量训练的浏览器交互验证可复用已安装的 Playwright：
 
 ```sh
-PLAYWRIGHT_CORE=/path/to/playwright-core node tests/test_pdca.js
-PLAYWRIGHT_CORE=/path/to/playwright-core node tests/test_strength.js
+PLAYWRIGHT_CORE="$PWD/apps/pdca/.generated/node_modules/playwright-core" node tests/test_strength.js
 ```
 
 投资网页的可选 DOM 测试见投资模块说明。
@@ -102,3 +110,15 @@ PLAYWRIGHT_CORE=/path/to/playwright-core node tests/test_strength.js
 页面展示今日汇总、每个事项的累计值与完整记录，以及最近 7 / 30 天的每日次数和时长图表，可筛选单个事项。统计使用浏览器本地时区，跨午夜的计时按每天实际经过的时长拆分；进行中的计时也计入统计。数据使用独立 JSON 文件保存，支持原子写入、上一版备份及多页面冲突检测。若提示保存失败，请刷新读取最新记录后再操作。自定义 `--data-file` 时，打卡文件位于指定 PDCA 文件的同一目录，文件名为 `checkins.json`。
 
 打卡前端源码位于 `apps/checkins/src/`，使用 Vue、TypeScript 和 Vite。生成的 npm 依赖、锁文件和构建产物存放在 `apps/checkins/.generated/`，不纳入 Git；`node_modules` 是指向该目录的本地链接。首次运行 `./start.sh` 会自动安装依赖并构建；修改前端源码后需运行 `npm run build --prefix apps/checkins`。直接运行 `serve.py` 前也需先构建。锁文件不纳入 Git，因此不同机器首次安装的间接依赖版本可能不同。浏览器测试默认使用 `/usr/bin/google-chrome`，可通过 `CHROME` 指定路径。
+
+## PDCA 前端开发
+
+PDCA 的入口为 `apps/pdca/src/App.vue`，计划、四象限、统计、历史和复盘界面位于 `src/components/`。文件存储、通知、会话和番茄钟分别由 `useStorage.ts`、`useNotifications.ts`、`useSession.ts` 和 `usePomodoro.ts` 管理；数据类型、旧备份兼容与纯计时算法独立维护。
+
+首次运行 `./start.sh` 会安装并构建缺失的前端。修改 PDCA 源码后运行 `npm run build --prefix apps/pdca`，刷新 `/pdca/` 即可查看。可运行 `npm run format --prefix apps/pdca` 统一格式。直接运行 `serve.py` 前需先构建；缺少构建时返回明确的 503 提示，数据 API 仍可用。
+
+PDCA 的依赖、自动生成的锁文件和构建结果均放在 `apps/pdca/.generated/`，由 Git 忽略，`node_modules` 仅为指向该目录的本地链接。已有 `/pdca/`、`/pdca_focus.html` 地址、接口、浏览器旧数据键和 JSON 备份格式继续可用。浏览器测试默认使用 `/usr/bin/google-chrome`，可通过 `CHROME_PATH` 指定路径；`PLAYWRIGHT_CORE` 可覆盖 Playwright 模块位置。
+
+## 页面统一风格
+
+主页、PDCA 和打卡共同引用 `apps/shared/theme.css`，统一采用米白背景、深绿文字、柔和绿色点缀和浅色卡片。新增页面应使用共享的 `sm-*` 布局和控件类，避免另设全站字体和配色。开发要求见 [AGENTS.md](AGENTS.md)，样式约定和新增页面模板见 [统一风格说明](docs/ui-style.md)。修改共享主题后，需要重新构建 PDCA 与打卡前端。

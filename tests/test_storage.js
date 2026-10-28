@@ -1,184 +1,163 @@
-// Exercise the actual page handlers against an asynchronous file API contract.
+// Uses the built Vue page and a real server with temporary data, never personal files.
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const vm = require('node:vm');
-const KEY = 'focus_pdca_singlefile_v1';
-const source = fs.readFileSync(`${__dirname}/../apps/pdca/index.html`, 'utf8').split('<script>')[1].split('</script>')[0];
-const start = Date.UTC(2026, 9, 8, 8), minute = 60000;
-const empty = () => ({tags:['工作'], records:[], active:null, workItems:[], pomoSettings:{workMinutes:25,breakMinutes:5,autoSwitch:true}, pomodoro:null});
-const settle = async () => { for(let i=0;i<8;i++) await new Promise(resolve=>setImmediate(resolve)); };
-function page(server, {legacy=null, file=false}={}) {
-  const elements = new Map(), downloads = [], intervals = [], events = {}, notifications = [];
-  let now = start;
-  const Clock = class extends Date { constructor(...args){super(...(args.length?args:[now]));} static now(){return now;} };
-  function element(id) {
-    if(!elements.has(id)) elements.set(id, {value:id==='minutes'?'30':id==='tag'?'工作':id==='trendTag'?'all':'', checked:false, hidden:true, inert:id==='appContent', handlers:{}, innerHTML:'', textContent:'',
-      addEventListener(type,fn){(this.handlers[type] ||= []).push(fn);}, focus(){}, click(){}, remove(){}, classList:{remove(){},toggle(){}}});
-    return elements.get(id);
-  }
-  const fetch = async (path, options={}) => {
-    if(path!=='/api/data') return {ok:true,json:async()=>({available:false,ok:true})};
-    if(server.unavailable) throw Error('服务不可用');
-    if(options.method==='POST') {
-      const payload=JSON.parse(options.body);
-      server.writes++;
-      if(server.failWrite) return {ok:false,status:500,json:async()=>({error:'磁盘写入失败'})};
-      if(payload.revision !== server.revision) return {ok:false,status:409,json:async()=>({error:'数据已被其他页面修改，请先导出本页 JSON 后重新读取。'})};
-      server.data=payload.data; server.revision=String(Number(server.revision||0)+1);
-      return {ok:true,status:200,json:async()=>({revision:server.revision,ok:true})};
+const { spawn } = require('node:child_process');
+const readline = require('node:readline');
+const fs = require('node:fs/promises');
+const { chromium } = require(process.env.PLAYWRIGHT_CORE || '../apps/pdca/.generated/node_modules/playwright-core');
+const legacy = {
+  tags: ['旧记录'], records: [], active: null, workItems: [],
+  pomoSettings: { workMinutes: 25, breakMinutes: 5, autoSwitch: true }, pomodoro: null,
+};
+const server = spawn(process.env.PYTHON || 'python3', ['-u', '-c', `
+import tempfile
+from pathlib import Path
+from serve import create_server, Scheduler
+with tempfile.TemporaryDirectory() as folder:
+    server, _ = create_server(0, Scheduler(lambda *args: None), Path(folder) / 'pdca.json')
+    print('http://127.0.0.1:' + str(server.server_port), flush=True)
+    try: server.serve_forever()
+    except KeyboardInterrupt: pass
+    finally: server.server_close()
+`], { cwd: require('node:path').resolve(__dirname, '..'), stdio: ['ignore', 'pipe', 'pipe'] });
+let diagnostic = '';
+server.stderr.on('data', value => diagnostic += value);
+(async () => {
+  let browser;
+  try {
+    const url = await new Promise((resolve, reject) => {
+      readline.createInterface({ input: server.stdout }).once('line', resolve);
+      server.once('error', reject);
+      server.once('exit', code => reject(Error(`Test server exited ${code}: ${diagnostic}`)));
+    });
+    browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox'] });
+    const context = await browser.newContext({ timezoneId: 'Asia/Shanghai', acceptDownloads: true });
+    const page = await context.newPage(), errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('dialog', dialog => dialog.accept());
+    await page.clock.install({ time: new Date('2026-10-28T08:00:00+08:00') });
+    await page.addInitScript(data => localStorage.setItem('focus_pdca_singlefile_v1', JSON.stringify(data)), legacy);
+    const data = (target = page) => target.evaluate(async () => (await (await fetch('/api/data', { headers: { 'X-PDCA-Token': window.PDCA_NATIVE_TOKEN } })).json()).data);
+    const ready = target => target.waitForFunction(() => document.querySelector('#appContent') && !document.querySelector('#appContent').inert);
+    const save = async (action, target = page) => {
+      const response = target.waitForResponse(response => response.url().endsWith('/api/data') && response.request().method() === 'POST');
+      await action(); const result = await response; await ready(target); return result;
+    };
+    async function backup(target = page) {
+      const pending = target.waitForEvent('download'); await target.locator('#exportJson').click();
+      return JSON.parse(await fs.readFile(await (await pending).path(), 'utf8'));
     }
-    return {ok:true,status:200,json:async()=>({data:structuredClone(server.data),revision:server.revision})};
-  };
-  function Notification(title, config){notifications.push({title,...config});this.close=()=>{};}
-  Notification.permission='granted';
-  vm.runInNewContext(source, {
-    document:{getElementById:element,querySelectorAll:()=>[],hidden:false,createElement:()=>element('download'),body:{appendChild(){}}},
-    window:{PDCA_NATIVE_TOKEN:file?undefined:'token', Notification, addEventListener(type,fn){events[type]=fn;}}, Notification,
-    location:{protocol:file?'file:':'http:'},
-    localStorage:{getItem:()=>legacy?JSON.stringify(legacy):null,setItem(){throw Error('Browser writes forbidden');}},
-    fetch,AbortSignal,structuredClone,crypto:require('node:crypto').webcrypto,Date:Clock,Math,Blob,
-    URL:{createObjectURL(blob){downloads.push(blob);return 'blob:test';},revokeObjectURL(){}},
-    setTimeout:()=>0,clearTimeout(){},setInterval(fn){intervals.push(fn);},confirm:()=>true,
-  });
-  return {element,downloads,notifications,events, async fire(id,type,target=null){await Promise.all((element(id).handlers[type]||[]).map(fn=>fn({preventDefault(){},target})));}, async tick(minutes){now=start+minutes*minute;await intervals[1]();}, async export(){element('exportJson').onclick();return JSON.parse(await downloads.at(-1).text());}};
-}
-const server = (data=null) => ({data,revision:data?'1':null,writes:0});
-async function main(){
-  const legacy=empty(); legacy.tags=['旧记录'];
-  const disk=server(); const p=page(disk,{legacy}); await settle();
-  assert.equal(disk.data.tags[0],'旧记录');
-  assert.equal(p.element('appContent').inert,false);
-  assert.match(p.element('storageStatus').textContent,/迁移/);
-  p.element('purpose').value='测试会话';
-  await p.fire('startForm','submit');
-  p.element('commentText').value='进展'; await p.fire('commentForm','submit');
-  assert.equal(disk.data.active.comments[0].text,'进展');
-  assert.match(p.element('storageStatus').textContent,/已保存/);
-  await p.element('pomoStart').onclick();
-  const timerId=disk.data.pomodoro.id;
-  await p.tick(25);
-  assert.equal(disk.data.pomodoro.phase,'break');
-  await p.fire('reviewChoices','click',{closest:()=>({dataset:{result:'completed'}})});
-  p.element('reviewText').value='完成'; await p.element('finishBtn').onclick();
-  assert.equal(disk.data.records[0].comments[0].text,'进展');
-  assert.equal(disk.data.pomodoro.id,timerId);
-  assert.equal(disk.data.active,null);
-  const reopened=page(disk,{legacy}); await settle();
-  assert.equal((await reopened.export()).data.records.length,1);
-  assert.equal((await reopened.export()).data.pomodoro.phase,'break');
-  await reopened.element('pomoStop').onclick();
-  assert.equal(disk.data.pomodoro,null);
-  const backup=await reopened.export(); backup.data.tags=['导入'];
-  await reopened.element('importInput').onchange({target:{files:[{text:async()=>JSON.stringify(backup)}]}});
-  assert.deepEqual(disk.data.tags,['导入']);
+    await page.goto(url + '/pdca/'); await ready(page);
+    assert.deepEqual((await data()).tags, ['旧记录']);
+    assert.match(await page.locator('#storageStatus').innerText(), /迁移/);
+    await page.locator('#purpose').fill('测试会话');
+    await save(() => page.locator('#startBtn').click());
+    const comment = '进展 <script>alert(1)</script> & 复盘';
+    await page.locator('#commentText').fill(comment);
+    await save(() => page.locator('#commentForm button').click());
+    assert.equal(await page.locator('#activeComments .comment-text').innerText(), comment);
+    const commentDownload = page.waitForEvent('download');
+    await page.locator('#activeComments [data-export-comment]').click();
+    assert.match(await fs.readFile(await (await commentDownload).path(), 'utf8'), /评论添加时间/);
+    await save(() => page.locator('#pomoStart').click());
+    const timerId = (await data()).pomodoro.id;
+    await page.clock.fastForward(25 * 60000);
+    await page.waitForFunction(() => document.querySelector('#pomoStatus').textContent.includes('Break'));
+    assert.equal((await data()).pomodoro.phase, 'break');
+    await page.locator('#endEarly').click();
+    await page.locator('#reviewChoices [data-result=partial]').click();
+    await page.locator('#reviewText').fill('阶段复盘');
+    await save(() => page.locator('#extendBtn').click());
+    assert.equal((await data()).active.extensions.length, 1);
+    assert.equal((await data()).active.extraMinutes, 10);
+    await page.locator('#endEarly').click();
+    await page.locator('#reviewChoices [data-result=completed]').click();
+    await page.locator('#reviewText').fill('完成');
+    await save(() => page.locator('#finishBtn').click());
+    assert.equal((await data()).records[0].comments[0].text, comment);
+    assert.equal((await data()).pomodoro.id, timerId);
+    await page.reload(); await ready(page);
+    assert.equal((await data()).records.length, 1);
+    assert.equal((await data()).pomodoro.phase, 'break');
+    await save(() => page.locator('#pomoStop').click());
+    const restored = await backup(); restored.data.tags = ['导入'];
+    await save(() => page.locator('#importInput').setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(restored)) }));
+    assert.deepEqual((await data()).tags, ['导入']);
 
-  disk.failWrite=true;
-  reopened.element('workItemTitle').value='待重试'; reopened.element('workImportant').checked=true;
-  await reopened.fire('workItemForm','submit');
-  assert.equal(disk.data.workItems.length,0);
-  assert.equal((await reopened.export()).data.workItems.length,1);
-  assert.match(reopened.element('storageStatus').textContent,/尚未保存/);
-  assert.equal(reopened.element('retrySave').hidden,false);
-  assert.notEqual(reopened.element('toast').textContent,'事项已添加');
-  let warned=false; reopened.events.beforeunload({preventDefault(){warned=true;}}); assert.equal(warned,true);
-  disk.failWrite=false; await reopened.element('retrySave').onclick();
-  assert.equal(disk.data.workItems.length,1);
-  assert.match(reopened.element('storageStatus').textContent,/已保存/);
+    // Manual mode waits at the boundary, then enabling auto starts the next phase.
+    await save(() => page.locator('#pomoAuto').uncheck());
+    await save(() => page.locator('#pomoStartBreak').click());
+    await page.clock.fastForward(5 * 60000);
+    await page.waitForFunction(() => document.querySelector('#pomoStatus').textContent.includes('等待手动切换'));
+    await ready(page);
+    assert.equal((await data()).pomodoro.waiting, true);
+    await save(() => page.locator('#pomoAuto').check());
+    assert.equal((await data()).pomodoro.phase, 'work');
+    assert.equal((await data()).pomodoro.waiting, false);
+    await save(() => page.locator('#pomoNext').click());
+    assert.equal((await data()).pomodoro.phase, 'break');
+    await save(() => page.locator('#pomoStop').click());
+    assert.equal((await data()).records.length, 1);
+    assert.equal((await data()).active, null);
 
-  // Two tabs cannot silently replace each other's saved data.
-  const stale=page(disk); await settle();
-  reopened.element('workItemTitle').value='第二条'; await reopened.fire('workItemForm','submit');
-  stale.element('workItemTitle').value='冲突条目'; await stale.fire('workItemForm','submit');
-  assert.equal(disk.data.workItems[1].title,'第二条');
-  assert.match(stale.element('storageStatus').textContent,/其他页面修改/);
-  assert.equal(stale.element('retrySave').hidden,true);
-  assert.equal(stale.element('retryLoad').hidden,false);
+    // A disk error must keep the page changes exportable and retryable.
+    let failWrite = true;
+    await page.route('**/api/data', route => failWrite && route.request().method() === 'POST' ? route.fulfill({ status: 500, json: { error: '磁盘写入失败' } }) : route.continue());
+    await page.locator('#workItemTitle').fill('待重试');
+    const failure = await save(() => page.locator('#workItemSave').click());
+    assert.equal(failure.status(), 500);
+    assert.equal((await data()).workItems.length, 0);
+    assert.equal((await backup()).data.workItems[0].title, '待重试');
+    assert.match(await page.locator('#storageStatus').innerText(), /尚未保存/);
+    assert(await page.locator('#retrySave').isVisible());
+    assert(!await page.locator('#toast').innerText().then(text => text === '事项已添加'));
+    failWrite = false;
+    await save(() => page.locator('#retrySave').click());
+    assert.equal((await data()).workItems.length, 1);
 
-  const offline=server(); offline.unavailable=true;
-  const failed=page(offline,{legacy}); await settle();
-  assert.equal(failed.element('appContent').inert,true);
-  assert.equal(offline.writes,0);
-  assert.match(failed.element('storageStatus').textContent,/读取失败/);
-  offline.unavailable=false; await failed.element('retryLoad').onclick();
-  assert.deepEqual(offline.data.tags,['旧记录']);
-  const filePage=page(server(),{legacy,file:true}); await settle();
-  assert.equal(filePage.element('appContent').inert,true);
-  assert.match(filePage.element('storageStatus').textContent,/python3 serve.py/);
-  filePage.element('exportLegacy').onclick();
-  assert.deepEqual(JSON.parse(await filePage.downloads[0].text()).data.tags,['旧记录']);
-  // Break can be the initial phase, including the review overlay controls.
-  const restDisk = server(empty()), restPage = page(restDisk); await settle();
-  await restPage.element('pomoStartBreak').onclick();
-  assert.equal(restDisk.data.pomodoro.phase, 'break');
-  assert.equal(restDisk.data.pomodoro.phaseEndsAt - restDisk.data.pomodoro.startedAt, 5 * minute);
-  await restPage.tick(5);
-  assert.equal(restDisk.data.pomodoro.phase, 'work');
-  await restPage.element('pomoStop').onclick();
-  await restPage.element('reviewPomoStartBreak').onclick();
-  assert.equal(restDisk.data.pomodoro.phase, 'break');
+    // A stale browser tab must not replace the first tab's saved changes.
+    const stale = await context.newPage(); stale.on('dialog', dialog => dialog.accept());
+    await stale.goto(url + '/pdca/'); await ready(stale);
+    await page.locator('#workItemTitle').fill('第二条');
+    await save(() => page.locator('#workItemSave').click());
+    await stale.locator('#workItemTitle').fill('冲突条目');
+    const conflict = await save(() => stale.locator('#workItemSave').click(), stale);
+    assert.equal(conflict.status(), 409);
+    assert.equal((await data()).workItems[1].title, '第二条');
+    assert.equal((await backup(stale)).data.workItems[1].title, '冲突条目');
+    assert(!await stale.locator('#retrySave').isVisible());
+    assert(await stale.locator('#retryLoad').isVisible());
+    await stale.locator('#retryLoad').click();
+    await stale.waitForFunction(() => document.querySelector('#storageStatus').textContent.includes('数据已读取'));
+    assert.equal((await backup(stale)).data.workItems[1].title, '第二条');
 
-  const many = empty();
-  many.records = Array.from({length:23}, (_,i) => ({id:'record-'+i, purpose:'记录'+i, tag:i%2?'学习':'工作', startedAt:Date.UTC(2026,9,i+1,8), plannedMinutes:5, actualMinutes:5}));
-  many.workItems = [{id:'item', title:'调整事项', important:true, urgent:true, createdAt:start, done:false}];
-  const historyDisk=server(many), historyPage=page(historyDisk); await settle();
-  const rowCount=()=> (historyPage.element('historyBody').innerHTML.match(/<tr>/g)||[]).length;
-  assert.equal(rowCount(),10);
-  historyPage.element('historyNext').onclick();
-  assert.equal(rowCount(),10);
-  historyPage.element('historyNext').onclick();
-  assert.equal(rowCount(),3);
-  assert.equal(historyPage.element('historyNext').disabled,true);
-  historyPage.element('historyPageSize').value='5'; historyPage.element('historyPageSize').onchange();
-  assert.equal(rowCount(),5);
-  assert.equal(historyPage.element('historyPage').textContent,'1 / 5 页');
-  historyPage.element('historyFrom').value='2026-10-05'; historyPage.element('historyTo').value='2026-10-08';
-  historyPage.element('historyTag').value='工作'; historyPage.element('historyTag').onchange();
-  assert.equal(rowCount(),2);
-  assert.match(historyPage.element('historySummary').textContent,/符合筛选 2 条/);
-  assert.equal((await historyPage.export()).data.records.length,23);
-  historyPage.element('historyFrom').value='2026-10-09'; historyPage.element('historyFrom').onchange();
-  assert.equal(rowCount(),0);
-  assert.match(historyPage.element('emptyHistory').textContent,/开始日期不能晚于结束日期/);
-  historyPage.element('historyReset').onclick();
-  assert.equal(rowCount(),5);
-  await historyPage.fire('workQuadrants','change',{closest:()=>({dataset:{moveItem:'item'}, value:'3'})});
-  assert.equal(historyDisk.data.workItems[0].important,false);
-  assert.equal(historyDisk.data.workItems[0].urgent,false);
-  assert.equal(historyDisk.data.workItems[0].title,'调整事项');
-  assert.equal(historyDisk.data.records.length,23);
-  const utilizationData=empty();
-  utilizationData.records=[
-    {id:'u1', purpose:'工作', tag:'工作', startedAt:start - 2*86400000, actualMinutes:240},
-    {id:'u2', purpose:'阅读', tag:'学习', startedAt:start - 2*86400000, actualMinutes:240, result:'partial'},
-    {id:'u3', purpose:'当天记录', tag:'工作', startedAt:start, actualMinutes:600}
-  ];
-  const utilizationDisk=server(utilizationData), utilizationPage=page(utilizationDisk); await settle();
-  const utilizationSvg=()=>utilizationPage.element('utilizationChart').innerHTML;
-  assert.equal(utilizationPage.element('utilizationHours').value,8);
-  assert.match(utilizationSvg(),/data-date="2026-10-06" data-percent="100"/);
-  assert.match(utilizationSvg(),/data-date="2026-10-07" data-percent="0"/);
-  assert.match(utilizationSvg(),/data-date="2026-10-08" data-percent="125"/);
-  assert.match(utilizationPage.element('utilizationSummary').textContent,/今日 125%/);
-  utilizationPage.element('utilizationRange').value='all'; utilizationPage.element('utilizationRange').onchange();
-  assert.equal((utilizationSvg().match(/<circle/g)||[]).length,3);
-  utilizationPage.element('utilizationHours').value='16'; await utilizationPage.element('utilizationHours').onchange();
-  assert.equal(utilizationDisk.data.utilizationHours,16);
-  assert.match(utilizationSvg(),/data-date="2026-10-06" data-percent="50"/);
-  assert.match(utilizationPage.element('utilizationSummary').textContent,/今日 62.5%/);
-  const utilizationReload=page(utilizationDisk); await settle();
-  assert.equal(utilizationReload.element('utilizationHours').value,16);
-  for (const invalid of ['0', '-1', '25', 'not a number']) {
-    utilizationReload.element('utilizationHours').value=invalid;
-    await utilizationReload.element('utilizationHours').onchange();
-    assert.equal(utilizationDisk.data.utilizationHours,16);
-    assert.equal(utilizationReload.element('utilizationHours').value,16);
+    // An unavailable service cannot overwrite disk data or enable the editor.
+    const offline = await context.newPage();
+    await offline.route('**/api/data', route => route.abort());
+    await offline.goto(url + '/pdca/');
+    await offline.waitForFunction(() => document.querySelector('#storageStatus').textContent.includes('读取失败'));
+    assert(await offline.locator('#appContent').evaluate(node => node.inert));
+    await offline.unroute('**/api/data');
+    await offline.locator('#retryLoad').click(); await ready(offline);
+    assert.equal((await data(offline)).workItems.length, 2);
+    // Overdue sessions reopen review, Esc cannot dismiss it, and extension starts
+    // a fresh ten-minute budget even when the old deadline is far in the past.
+    await offline.clock.install({ time: new Date('2026-10-28T10:00:00+08:00') });
+    await offline.locator('#purpose').fill('超时复盘');
+    await offline.locator('#minutes').fill('1');
+    await save(() => offline.locator('#startBtn').click(), offline);
+    await offline.clock.fastForward(20 * 60000);
+    await offline.locator('#reviewOverlay').waitFor();
+    await offline.keyboard.press('Escape');
+    assert(await offline.locator('#reviewOverlay').isVisible());
+    await offline.locator('#reviewChoices [data-result=partial]').click();
+    await offline.locator('#reviewText').fill('继续十分钟');
+    await save(() => offline.locator('#extendBtn').click(), offline);
+    const active = (await data(offline)).active;
+    assert(active.startedAt + (active.budgetMinutes + active.extraMinutes) * 60000 - await offline.evaluate(() => Date.now()) >= 10 * 60000);
+    assert.deepEqual(errors, []);
+    console.log('PDCA storage browser checks passed: migration, comments/export, independent timer transitions, review/extension, refresh, import, write failure/retry, stale-tab conflict, unavailable service and recovery.');
+  } finally {
+    await browser?.close(); server.kill('SIGINT');
+    await new Promise(resolve => server.exitCode !== null ? resolve() : server.once('exit', resolve));
   }
-  utilizationDisk.failWrite=true;
-  utilizationReload.element('utilizationHours').value='12'; await utilizationReload.element('utilizationHours').onchange();
-  assert.equal(utilizationDisk.data.utilizationHours,16);
-  assert.equal((await utilizationReload.export()).data.utilizationHours,12);
-  utilizationDisk.failWrite=false; await utilizationReload.element('retrySave').onclick();
-  assert.equal(utilizationDisk.data.utilizationHours,12);
-  console.log('Page checks passed: migration, authoritative file data, comments, Work/Break starts, pagination/date/tag filters, task moves, daily utilization/settings, refresh, import, failed writes/retry, conflicts, unavailable service and legacy export.');
-}
-main().catch(error=>{console.error(error);process.exitCode=1;});
+})().catch(error => { console.error(error); process.exitCode = 1 });
