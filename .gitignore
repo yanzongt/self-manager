@@ -11,3 +11,11 @@ dist/
 # Local data and editor settings
 data/
 .vscode/
+
+# Frontend dependencies
+node_modules/
+
+# Generated check-in dependencies, lockfile, and build output
+/apps/checkins/.generated/
+
+/apps/checkins/node_modules

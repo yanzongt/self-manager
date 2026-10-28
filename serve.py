@@ -486,10 +486,20 @@ def create_server(port, scheduler=None, data_path=None, investment=None):
                     "text/html; charset=utf-8",
                 )
             if path == "/checkins/":
-                page = (APPS_ROOT / "checkins" / "index.html").read_text().replace(
+                page_path = APPS_ROOT / "checkins" / ".generated" / "static" / "index.html"
+                if not page_path.is_file():
+                    return self.reply(503, {"error": "打卡前端尚未构建，请运行 apps/checkins/setup.sh 和 npm run build --prefix apps/checkins"})
+                page = page_path.read_text().replace(
                     "/*SERVER_TOKEN*/null", json.dumps(token), 1
                 )
                 return self.reply(200, page.encode(), "text/html; charset=utf-8")
+            if path.startswith("/checkins/assets/"):
+                assets = (APPS_ROOT / "checkins" / ".generated" / "static" / "assets").resolve()
+                asset = (assets / path.removeprefix("/checkins/assets/")).resolve()
+                if asset.parent != assets or not asset.is_file() or asset.suffix not in (".js", ".css"):
+                    return self.reply(404, {"error": "Not found"})
+                content_type = "text/javascript; charset=utf-8" if asset.suffix == ".js" else "text/css; charset=utf-8"
+                return self.reply(200, asset.read_bytes(), content_type)
             if path == "/api/checkins":
                 if not self.authorized():
                     return self.reply(403, {"error": "Invalid token"})

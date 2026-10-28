@@ -7,11 +7,11 @@
 在仓库根目录执行：
 
 ```sh
-./setup.sh       # 首次安装或更新锁定依赖，需要 uv 和 Python 3.13+
+./setup.sh       # 安装投资模块 Python 依赖，需要 uv 和 Python 3.13+
 ./start.sh
 ```
 
-自动打开 <http://127.0.0.1:8765>。只启动一个进程、监听一个端口，无需分别启动回测服务。两个脚本均支持从任意目录调用。
+首次启动会使用 Node.js 和 npm 安装并构建打卡前端；之后启动使用本机构建结果。自动打开 <http://127.0.0.1:8765>。只启动一个进程、监听一个端口，无需分别启动回测服务。两个脚本均支持从任意目录调用。
 
 | 入口 | 地址 |
 | --- | --- |
@@ -40,7 +40,7 @@ self-manager/
 │   ├── portal/index.html    # 个人主页
 │   ├── pdca/index.html      # 行为闭环
 │   ├── strength/index.html  # 力量训练
-│   ├── checkins/index.html  # 日常打卡
+│   ├── checkins/            # 日常打卡（Vue + TypeScript + Vite）
 │   └── investment/          # 原 f-analysis，保留独立 Python 项目
 │       ├── f_analysis/      # 回测引擎和网页资源
 │       ├── scripts/         # 命令行与独立服务
@@ -80,7 +80,10 @@ self-manager/
 .venv/bin/python -m unittest discover -s tests -v
 (cd apps/investment && ../../.venv/bin/python -m unittest discover -s tests -v)
 node tests/test_storage.js
-node tests/test_checkins.js
+./apps/checkins/setup.sh
+npm run build --prefix apps/checkins
+npm test --prefix apps/checkins
+npm run test:browser --prefix apps/checkins
 ```
 
 浏览器交互验证需要 Playwright 和 Chrome：
@@ -97,3 +100,5 @@ PLAYWRIGHT_CORE=/path/to/playwright-core node tests/test_strength.js
 在首页进入“日常打卡”，添加事项时选择“按次数”或“按时间”。计次事项点击 `+1` 保存一次打卡时间并更新累计次数；计时事项点击开始，再次点击结束，保存起止时间。刷新或关闭页面不终止计时，重新打开后可结束。
 
 页面展示今日汇总、每个事项的累计值与完整记录，以及最近 7 / 30 天的每日次数和时长图表，可筛选单个事项。统计使用浏览器本地时区，跨午夜的计时按每天实际经过的时长拆分；进行中的计时也计入统计。数据使用独立 JSON 文件保存，支持原子写入、上一版备份及多页面冲突检测。若提示保存失败，请刷新读取最新记录后再操作。自定义 `--data-file` 时，打卡文件位于指定 PDCA 文件的同一目录，文件名为 `checkins.json`。
+
+打卡前端源码位于 `apps/checkins/src/`，使用 Vue、TypeScript 和 Vite。生成的 npm 依赖、锁文件和构建产物存放在 `apps/checkins/.generated/`，不纳入 Git；`node_modules` 是指向该目录的本地链接。首次运行 `./start.sh` 会自动安装依赖并构建；修改前端源码后需运行 `npm run build --prefix apps/checkins`。直接运行 `serve.py` 前也需先构建。锁文件不纳入 Git，因此不同机器首次安装的间接依赖版本可能不同。浏览器测试默认使用 `/usr/bin/google-chrome`，可通过 `CHROME` 指定路径。

@@ -2,6 +2,10 @@
 # Use the shared environment first, regardless of the working directory.
 set -eu
 PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ ! -f "$PROJECT_DIR/apps/checkins/.generated/static/index.html" ]; then
+    "$PROJECT_DIR/apps/checkins/setup.sh"
+    npm run build --prefix "$PROJECT_DIR/apps/checkins"
+fi
 if [ -x "$PROJECT_DIR/.venv/bin/python" ]; then
     exec "$PROJECT_DIR/.venv/bin/python" "$PROJECT_DIR/serve.py" "$@"
 fi
