@@ -1,172 +1,378 @@
 // Run with PLAYWRIGHT_CORE=/path/to/playwright-core node tests/test_strength.js.
 // CHROME_PATH may override the local Chrome executable.
-const assert = require('node:assert/strict');
-const fs = require('node:fs/promises');
-const { pathToFileURL } = require('node:url');
-const path = require('node:path');
-const { chromium } = require(process.env.PLAYWRIGHT_CORE || 'playwright');
-const KEY = 'strengthTracker_v1';
-const url = pathToFileURL(path.join(__dirname, '../apps/strength/index.html')).href;
+const assert = require("node:assert/strict");
+const fs = require("node:fs/promises");
+const http = require("node:http");
+const path = require("node:path");
+const { chromium } = require(process.env.PLAYWRIGHT_CORE || "playwright");
+const KEY = "strengthTracker_v1";
+const staticRoot = path.join(__dirname, "../apps/strength/.generated/static");
 (async () => {
-  const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox'] });
-  const errors = [], dialogs = [];
+  const server = http.createServer(async (req, res) => {
+    const resource =
+      req.url === "/strength/"
+        ? "/index.html"
+        : req.url.replace(/^\/strength/, "");
+    try {
+      const file = path.join(staticRoot, resource);
+      res.setHeader(
+        "Content-Type",
+        file.endsWith(".js")
+          ? "text/javascript"
+          : file.endsWith(".css")
+            ? "text/css"
+            : "text/html",
+      );
+      res.end(await fs.readFile(file));
+    } catch {
+      res.statusCode = 404;
+      res.end();
+    }
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const url = `http://127.0.0.1:${server.address().port}/strength/`;
+
+  const browser = await chromium.launch({
+    executablePath: process.env.CHROME_PATH || "/usr/bin/google-chrome",
+    headless: true,
+    args: ["--no-sandbox"],
+  });
+  const errors = [],
+    dialogs = [];
   async function open(initial) {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 900 },
+    });
     const page = await context.newPage();
-    page.on('pageerror', error => errors.push(error.message));
-    page.on('dialog', async dialog => { dialogs.push(dialog.message()); await dialog.accept(); });
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("dialog", async (dialog) => {
+      dialogs.push(dialog.message());
+      await dialog.accept();
+    });
     await page.goto(url);
-    if (initial) { await page.evaluate(({ KEY, initial }) => localStorage.setItem(KEY, JSON.stringify(initial)), { KEY, initial }); await page.reload(); }
+    if (initial) {
+      await page.evaluate(
+        ({ KEY, initial }) =>
+          localStorage.setItem(KEY, JSON.stringify(initial)),
+        { KEY, initial },
+      );
+      await page.reload();
+    }
     return page;
   }
-  const state = page => page.evaluate(key => JSON.parse(localStorage.getItem(key)), KEY);
+  const state = (page) =>
+    page.evaluate((key) => JSON.parse(localStorage.getItem(key)), KEY);
   async function upload(page, selector, payload) {
-    await page.setInputFiles(selector, { name: 'test.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(payload)) });
-    await page.waitForFunction(selector => document.querySelector(selector).value === '', selector);
+    await page.setInputFiles(selector, {
+      name: "test.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify(payload)),
+    });
+    await page.waitForFunction(
+      (selector) => document.querySelector(selector).value === "",
+      selector,
+    );
   }
   async function download(page, selector) {
-    const waiting = page.waitForEvent('download'); await page.click(selector);
-    const file = await waiting; return JSON.parse(await fs.readFile(await file.path(), 'utf8'));
+    const waiting = page.waitForEvent("download");
+    await page.click(selector);
+    const file = await waiting;
+    return JSON.parse(await fs.readFile(await file.path(), "utf8"));
   }
   try {
     const legacy = { logs: [], body: [], weights: { squat: 4.5 } };
     const page = await open(legacy);
-    await page.click('[data-page="schedule"]'); await page.click('#fullWeek [data-day="1"]');
-    assert.equal(await page.inputValue('[data-ex="squat"][data-target="weight"]'), '4.5');
-    for (const [key, value] of [['sets', '4'], ['reps', '14'], ['weight', '6.3']]) {
+    await page.click('[data-page="schedule"]');
+    await page.click('#fullWeek [data-day="1"]');
+    assert.equal(
+      await page.inputValue('[data-ex="squat"][data-target="weight"]'),
+      "4.5",
+    );
+    for (const [key, value] of [
+      ["sets", "4"],
+      ["reps", "14"],
+      ["weight", "6.3"],
+    ]) {
       await page.fill(`[data-ex="squat"][data-target="${key}"]`, value);
       await page.locator(`[data-ex="squat"][data-target="${key}"]`).blur();
     }
-    let stored = await state(page), squat = stored.exercises.find(x => x.id === 'squat');
+    let stored = await state(page),
+      squat = stored.exercises.find((x) => x.id === "squat");
     assert.deepEqual([squat.sets, squat.reps, squat.weight], [4, 14, 6.3]);
-    await page.fill('[data-ex="squat"][data-target="sets"]', '0'); await page.locator('[data-ex="squat"][data-target="sets"]').blur();
-    assert.equal((await state(page)).exercises.find(x => x.id === 'squat').sets, 4);
-    await page.click('#newExercise'); await page.fill('#exerciseName', '测试划船 <安全>'); await page.fill('#exercisePart', '背部'); await page.fill('#exerciseNote', '左右各做，保持稳定');
+    await page.fill('[data-ex="squat"][data-target="sets"]', "0");
+    await page.locator('[data-ex="squat"][data-target="sets"]').blur();
+    assert.equal(
+      (await state(page)).exercises.find((x) => x.id === "squat").sets,
+      4,
+    );
+    await page.click("#newExercise");
+    await page.fill("#exerciseName", "测试划船 <安全>");
+    await page.fill("#exercisePart", "背部");
+    await page.fill("#exerciseNote", "左右各做，保持稳定");
     await page.click('#exerciseForm button[type="submit"]');
-    stored = await state(page); const custom = stored.exercises.at(-1);
+    stored = await state(page);
+    const custom = stored.exercises.at(-1);
     assert.ok(stored.routines[1].ids.includes(custom.id));
-    await page.click(`[data-edit-ex="${custom.id}"]`); await page.fill('#exerciseNote', '更新备注'); await page.click('#exerciseForm button[type="submit"]');
-    await page.reload(); await page.click('[data-page="schedule"]'); await page.click('#fullWeek [data-day="1"]');
-    assert.equal(await page.inputValue('[data-ex="squat"][data-target="sets"]'), '4');
-    assert.match(await page.textContent('#dayDetails'), /更新备注/);
-    const plan = await download(page, '#exportPlan'); assert.equal(plan.type, 'plan'); assert.equal(plan.exercises.at(-1).note, '更新备注');
-    await page.click('#logSelected');
-    assert.deepEqual(await Promise.all(['#logSets', '#logReps', '#logWeight'].map(id => page.inputValue(id))), ['4', '14', '6.3']);
-    await page.click('#saveLog');
+    await page.click(`[data-edit-ex="${custom.id}"]`);
+    await page.fill("#exerciseNote", "更新备注");
+    await page.click('#exerciseForm button[type="submit"]');
+    await page.reload();
+    await page.click('[data-page="schedule"]');
+    await page.click('#fullWeek [data-day="1"]');
+    assert.equal(
+      await page.inputValue('[data-ex="squat"][data-target="sets"]'),
+      "4",
+    );
+    assert.match(await page.textContent("#dayDetails"), /更新备注/);
+    const plan = await download(page, "#exportPlan");
+    assert.equal(plan.type, "plan");
+    assert.equal(plan.exercises.at(-1).note, "更新备注");
+    await page.click("#logSelected");
+    assert.deepEqual(
+      await Promise.all(
+        ["#logSets", "#logReps", "#logWeight"].map((id) => page.inputValue(id)),
+      ),
+      ["4", "14", "6.3"],
+    );
+    await page.click("#saveLog");
     await page.click('[data-page="schedule"]');
     await page.click(`[data-log-ex="${custom.id}"]`);
-    assert.equal(await page.inputValue('#logEx'), custom.id);
-    assert.deepEqual(await Promise.all(['#logSets', '#logReps', '#logWeight'].map(id => page.inputValue(id))), ['2', '10', '0']);
-    await page.click('#saveLog');
-    const records = await download(page, '#exportLogs'); assert.equal(records.logs.length, 2);
-    const backup = await download(page, '#exportBtn'); assert.equal(backup.type, 'backup');
-    const target = await open(); await page.click('[data-page="schedule"]');
-    await upload(target, '#planFile', plan);
+    assert.equal(await page.inputValue("#logEx"), custom.id);
+    assert.deepEqual(
+      await Promise.all(
+        ["#logSets", "#logReps", "#logWeight"].map((id) => page.inputValue(id)),
+      ),
+      ["2", "10", "0"],
+    );
+    await page.click("#saveLog");
+    const records = await download(page, "#exportLogs");
+    assert.equal(records.logs.length, 2);
+    const backup = await download(page, "#exportBtn");
+    assert.equal(backup.type, "backup");
+    const target = await open();
+    await page.click('[data-page="schedule"]');
+    await upload(target, "#planFile", plan);
     assert.deepEqual((await state(target)).routines, plan.routines);
-    await upload(target, '#logsFile', records); assert.equal((await state(target)).logs.length, 2);
-    await upload(target, '#logsFile', records); assert.equal((await state(target)).logs.length, 2);
-    const before = await state(target), bad = structuredClone(plan); bad.exercises[0].sets = 0;
-    await upload(target, '#planFile', bad); assert.deepEqual(await state(target), before);
-    await upload(target, '#planFile', records); assert.deepEqual(await state(target), before);
-    const conflict = structuredClone(records); conflict.logs[0].weight = 9;
-    await upload(target, '#logsFile', conflict); assert.deepEqual(await state(target), before);
-    const invalidDate = structuredClone(records); invalidDate.logs[0].date = '2026-02-30';
-    await upload(target, '#logsFile', invalidDate); assert.deepEqual(await state(target), before);
+    await upload(target, "#logsFile", records);
+    assert.equal((await state(target)).logs.length, 2);
+    await upload(target, "#logsFile", records);
+    assert.equal((await state(target)).logs.length, 2);
+    const before = await state(target),
+      bad = structuredClone(plan);
+    bad.exercises[0].sets = 0;
+    await upload(target, "#planFile", bad);
+    assert.deepEqual(await state(target), before);
+    await upload(target, "#planFile", records);
+    assert.deepEqual(await state(target), before);
+    const conflict = structuredClone(records);
+    conflict.logs[0].weight = 9;
+    await upload(target, "#logsFile", conflict);
+    assert.deepEqual(await state(target), before);
+    const invalidDate = structuredClone(records);
+    invalidDate.logs[0].date = "2026-02-30";
+    await upload(target, "#logsFile", invalidDate);
+    assert.deepEqual(await state(target), before);
     // Storage failures must leave both the stored and live plan untouched.
-    await target.evaluate(() => { window.originalSetItem = Storage.prototype.setItem; Storage.prototype.setItem = () => { throw new Error('quota'); }; });
-    await upload(target, '#planFile', plan); assert.deepEqual(await state(target), before);
-    await target.evaluate(() => { Storage.prototype.setItem = window.originalSetItem; });
-    const replaced = structuredClone(plan); replaced.exercises.find(x => x.id === 'squat').name = '完全不同的动作';
-    await upload(target, '#planFile', replaced);
-    stored = await state(target); const originalLog = stored.logs.find(x => x.id === records.logs[0].id);
-    assert.equal(stored.exercises.find(x => x.id === originalLog.exId).name, '徒手深蹲');
-    await upload(target, '#importFile', backup); assert.deepEqual((await state(target)).logs, backup.logs);
-    await upload(target, '#importFile', { app: 'strengthTracker', version: 1, ...legacy });
-    assert.equal((await state(target)).exercises.find(x => x.id === 'squat').weight, 4.5);
+    await target.evaluate(() => {
+      window.originalSetItem = Storage.prototype.setItem;
+      Storage.prototype.setItem = () => {
+        throw new Error("quota");
+      };
+    });
+    await upload(target, "#planFile", plan);
+    assert.deepEqual(await state(target), before);
+    await target.evaluate(() => {
+      Storage.prototype.setItem = window.originalSetItem;
+    });
+    const replaced = structuredClone(plan);
+    replaced.exercises.find((x) => x.id === "squat").name = "完全不同的动作";
+    await upload(target, "#planFile", replaced);
+    stored = await state(target);
+    const originalLog = stored.logs.find((x) => x.id === records.logs[0].id);
+    assert.equal(
+      stored.exercises.find((x) => x.id === originalLog.exId).name,
+      "徒手深蹲",
+    );
+    await upload(target, "#importFile", backup);
+    assert.deepEqual((await state(target)).logs, backup.logs);
+    await upload(target, "#importFile", {
+      app: "strengthTracker",
+      version: 1,
+      ...legacy,
+    });
+    assert.equal(
+      (await state(target)).exercises.find((x) => x.id === "squat").weight,
+      4.5,
+    );
     // Records alone restore custom action definitions without changing the weekly plan.
-    const recordsOnly = await open(); await upload(recordsOnly, '#logsFile', records);
-    stored = await state(recordsOnly); assert.ok(stored.exercises.some(x => x.id === custom.id)); assert.ok(!stored.routines[1].ids.includes(custom.id));
-    await upload(recordsOnly, '#logsFile', records); assert.equal((await state(recordsOnly)).logs.length, 2);
+    const recordsOnly = await open();
+    await upload(recordsOnly, "#logsFile", records);
+    stored = await state(recordsOnly);
+    assert.ok(stored.exercises.some((x) => x.id === custom.id));
+    assert.ok(!stored.routines[1].ids.includes(custom.id));
+    await upload(recordsOnly, "#logsFile", records);
+    assert.equal((await state(recordsOnly)).logs.length, 2);
     await page.click(`[data-remove-ex="${custom.id}"]`);
     assert.equal((await state(page)).logs.length, 2);
-    await page.selectOption('#addExisting', custom.id); await page.click('#addToDay');
+    await page.selectOption("#addExisting", custom.id);
+    await page.click("#addToDay");
     await page.setViewportSize({ width: 390, height: 844 });
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-    await page.screenshot({ path: '/tmp/strength-training-mobile.png', fullPage: true });
+    assert.equal(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+      true,
+    );
+    await page.screenshot({
+      path: "/tmp/strength-training-mobile.png",
+      fullPage: true,
+    });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.click('#fullWeek [data-day="2"]');
     await page.click('[data-log-ex="wrist"]');
-    assert.equal(await page.inputValue('#logEx'), 'wrist');
-    assert.equal(await page.textContent('#logRepsLabel'), '每组秒数');
-    assert.equal(await page.inputValue('#logReps'), '20');
-    await page.click('#saveLog'); assert.equal((await state(page)).logs.at(-1).unit, '秒');
-    await page.click('[data-page="analysis"]'); await page.click('[data-page="body"]');
+    assert.equal(await page.inputValue("#logEx"), "wrist");
+    assert.equal(await page.textContent("#logRepsLabel"), "每组秒数");
+    assert.equal(await page.inputValue("#logReps"), "20");
+    await page.click("#saveLog");
+    assert.equal((await state(page)).logs.at(-1).unit, "秒");
+    await page.click('[data-page="analysis"]');
+    await page.click('[data-page="body"]');
     // The library joins catalog metadata, weekly plans and history by exercise ID.
     await page.click('[data-page="library"]');
-    await page.fill('#librarySearch', '测试划船');
-    assert.equal(await page.locator('[data-library-ex]').count(), 1);
+    await page.fill("#librarySearch", "测试划船");
+    assert.equal(await page.locator("[data-library-ex]").count(), 1);
     await page.click(`[data-library-ex="${custom.id}"]`);
-    assert.equal(await page.textContent('#libraryLogCount'), '1 条');
+    assert.equal(await page.textContent("#libraryLogCount"), "1 条");
     assert.equal(await page.locator('[data-library-day="1"]').count(), 1);
-    await page.click('#libraryEdit');
-    const guide = '1. 站稳并保持背部稳定\n2. 缓慢拉起 <script>window.guideUnsafe = true</script>\n3. 控制还原';
-    await page.fill('#exerciseGuide', guide);
-    await page.fill('#exerciseName', '仓库划船');
+    await page.click("#libraryEdit");
+    const guide =
+      "1. 站稳并保持背部稳定\n2. 缓慢拉起 <script>window.guideUnsafe = true</script>\n3. 控制还原";
+    await page.fill("#exerciseGuide", guide);
+    await page.fill("#exerciseName", "仓库划船");
     await page.click('#exerciseForm button[type="submit"]');
-    assert.equal(await page.textContent('#libraryGuide'), guide);
+    assert.equal(await page.textContent("#libraryGuide"), guide);
     assert.equal(await page.evaluate(() => window.guideUnsafe), undefined);
-    assert.equal((await state(page)).exercises.find(x => x.id === custom.id).guide, guide);
-    assert.equal(await page.textContent('#libraryLogCount'), '1 条');
-    await page.click('#libraryAllLogs');
-    assert.equal(await page.inputValue('#filterEx'), custom.id);
-    assert.match(await page.textContent('#allLogs'), /仓库划船/);
-    await page.click('[data-page="schedule"]'); await page.click('#fullWeek [data-day="1"]');
+    assert.equal(
+      (await state(page)).exercises.find((x) => x.id === custom.id).guide,
+      guide,
+    );
+    assert.equal(await page.textContent("#libraryLogCount"), "1 条");
+    await page.click("#libraryAllLogs");
+    assert.equal(await page.inputValue("#filterEx"), custom.id);
+    assert.match(await page.textContent("#allLogs"), /仓库划船/);
+    await page.click('[data-page="schedule"]');
+    await page.click('#fullWeek [data-day="1"]');
     await page.click(`[data-view-ex="${custom.id}"]`);
-    assert.equal(await page.textContent('#libraryGuide'), guide);
+    assert.equal(await page.textContent("#libraryGuide"), guide);
     await page.click('[data-library-day="1"]');
-    assert.match(await page.textContent('#dayDetails'), /仓库划船/);
+    assert.match(await page.textContent("#dayDetails"), /仓库划船/);
     await page.click('[data-page="library"]');
-    await page.selectOption('#libraryPart', '核心');
-    await page.click('#libraryNew');
-    await page.fill('#exerciseName', '仓库独立动作'); await page.fill('#exercisePart', '其他');
-    await page.fill('#exerciseGuide', '准备姿势\n动作步骤');
+    await page.selectOption("#libraryPart", "核心");
+    await page.click("#libraryNew");
+    await page.fill("#exerciseName", "仓库独立动作");
+    await page.fill("#exercisePart", "其他");
+    await page.fill("#exerciseGuide", "准备姿势\n动作步骤");
     await page.click('#exerciseForm button[type="submit"]');
-    stored = await state(page); const libraryCustom = stored.exercises.at(-1);
-    assert.ok(!Object.values(stored.routines).some(r => r.ids.includes(libraryCustom.id)));
-    assert.match(await page.textContent('#libraryPlans'), /尚未加入/);
-    assert.match(await page.textContent('#libraryRecords'), /暂无训练记录/);
-    await page.selectOption('#libraryAddDay', '3'); await page.click('#libraryAddPlan');
+    stored = await state(page);
+    const libraryCustom = stored.exercises.at(-1);
+    assert.ok(
+      !Object.values(stored.routines).some((r) =>
+        r.ids.includes(libraryCustom.id),
+      ),
+    );
+    assert.match(await page.textContent("#libraryPlans"), /尚未加入/);
+    assert.match(await page.textContent("#libraryRecords"), /暂无训练记录/);
+    await page.selectOption("#libraryAddDay", "3");
+    await page.click("#libraryAddPlan");
     assert.ok((await state(page)).routines[3].ids.includes(libraryCustom.id));
-    await page.click('#libraryLog');
-    assert.equal(await page.inputValue('#logEx'), libraryCustom.id);
-    await page.click('#saveLog'); await page.click('[data-page="library"]');
-    await page.fill('#librarySearch', '仓库独立'); await page.click(`[data-library-ex="${libraryCustom.id}"]`);
-    assert.equal(await page.textContent('#libraryLogCount'), '1 条');
-    await page.fill('#librarySearch', '不存在的动作');
-    assert.equal(await page.locator('[data-library-ex]').count(), 0);
-    await page.fill('#librarySearch', '准备姿势');
-    assert.equal(await page.locator('[data-library-ex]').count(), 1);
+    await page.click("#libraryLog");
+    assert.equal(await page.inputValue("#logEx"), libraryCustom.id);
+    await page.click("#saveLog");
+    await page.click('[data-page="library"]');
+    await page.fill("#librarySearch", "仓库独立");
+    await page.click(`[data-library-ex="${libraryCustom.id}"]`);
+    assert.equal(await page.textContent("#libraryLogCount"), "1 条");
+    await page.fill("#librarySearch", "不存在的动作");
+    assert.equal(await page.locator("[data-library-ex]").count(), 0);
+    await page.fill("#librarySearch", "准备姿势");
+    assert.equal(await page.locator("[data-library-ex]").count(), 1);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.click(`[data-library-ex="${libraryCustom.id}"]`);
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-    await page.screenshot({ path: '/tmp/strength-library-mobile.png', fullPage: true });
-    await page.reload(); await page.click('[data-page="library"]');
-    await page.fill('#librarySearch', '仓库划船'); await page.click(`[data-library-ex="${custom.id}"]`);
-    assert.equal(await page.textContent('#libraryGuide'), guide);
+    assert.equal(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+      true,
+    );
+    await page.screenshot({
+      path: "/tmp/strength-library-mobile.png",
+      fullPage: true,
+    });
+    await page.reload();
+    await page.click('[data-page="library"]');
+    await page.fill("#librarySearch", "仓库划船");
+    await page.click(`[data-library-ex="${custom.id}"]`);
+    assert.equal(await page.textContent("#libraryGuide"), guide);
     await page.setViewportSize({ width: 1280, height: 900 });
-    await page.screenshot({ path: '/tmp/strength-library-desktop.png', fullPage: true });
-    const guideBackup = await download(page, '#exportBtn');
-    await upload(target, '#importFile', guideBackup);
-    assert.equal((await state(target)).exercises.find(x => x.id === custom.id).guide, guide);
+    await page.screenshot({
+      path: "/tmp/strength-library-desktop.png",
+      fullPage: true,
+    });
+    const guideBackup = await download(page, "#exportBtn");
+    await upload(target, "#importFile", guideBackup);
+    assert.equal(
+      (await state(target)).exercises.find((x) => x.id === custom.id).guide,
+      guide,
+    );
     await page.click('[data-page="schedule"]');
-    const guidePlan = await download(page, '#exportPlan');
-    await upload(target, '#planFile', guidePlan);
-    assert.equal((await state(target)).exercises.find(x => x.id === libraryCustom.id).guide, libraryCustom.guide);
-    const oldPlan = structuredClone(guidePlan); oldPlan.exercises.forEach(x => delete x.guide);
-    await upload(target, '#planFile', oldPlan);
-    assert.equal((await state(target)).exercises.find(x => x.id === custom.id).guide, '');
-        assert.deepEqual(errors, []);
-    assert.ok(dialogs.some(x => x.includes('同编号记录内容冲突')));
-    console.log('Passed: legacy migration, editable targets, exercise add/edit, reload persistence, plan/records/backup round trips, duplicate/conflict/invalid imports, history preservation mobile layout, library search/filter, guides, plan/history links and guide import/export.');
-  } finally { await browser.close(); }
-})().catch(error => { console.error(error); process.exitCode = 1; });
+    const guidePlan = await download(page, "#exportPlan");
+    await upload(target, "#planFile", guidePlan);
+    assert.equal(
+      (await state(target)).exercises.find((x) => x.id === libraryCustom.id)
+        .guide,
+      libraryCustom.guide,
+    );
+    const oldPlan = structuredClone(guidePlan);
+    oldPlan.exercises.forEach((x) => delete x.guide);
+    await upload(target, "#planFile", oldPlan);
+    assert.equal(
+      (await state(target)).exercises.find((x) => x.id === custom.id).guide,
+      "",
+    );
+    // Body measurements retain nullable fields and support edit/delete without affecting logs.
+    await page.click('[data-page="body"]');
+    await page.fill("#bodyWeight", "78.5");
+    await page.fill("#waist", "85");
+    await page.fill("#bodyNote", "固定时间测量");
+    await page.click(
+      '#bodyForm button[type="submit"], #bodyForm button:not([type])',
+    );
+    stored = await state(page);
+    const measurement = stored.body.at(-1);
+    assert.equal(measurement.weight, 78.5);
+    assert.equal(measurement.arm, null);
+    await page.click(`[data-edit-body="${measurement.id}"]`);
+    await page.fill("#bodyWeight", "79");
+    await page.click(
+      '#bodyForm button[type="submit"], #bodyForm button:not([type])',
+    );
+    assert.equal((await state(page)).body.at(-1).weight, 79);
+    assert.equal(
+      (await page.locator("#bodySummary").textContent()).trim(),
+      "最新测量 79 · 测量次数 1",
+    );
+    await page.click(`[data-del-body="${measurement.id}"]`);
+    assert.equal((await state(page)).body.length, 0);
+    assert.deepEqual(errors, []);
+    assert.ok(dialogs.some((x) => x.includes("同编号记录内容冲突")));
+    console.log(
+      "Passed: legacy migration, editable targets, exercise add/edit, reload persistence, plan/records/backup round trips, duplicate/conflict/invalid imports, history preservation mobile layout, library search/filter, guides, plan/history links and guide import/export.",
+    );
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

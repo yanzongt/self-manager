@@ -1,0 +1,264 @@
+main {
+  display: grid;
+  gap: 20px;
+}
+h2 {
+  font-size: 19px;
+  margin: 0 0 16px;
+  font-weight: 600;
+}
+h3 {
+  font-size: 15px;
+  margin: 20px 0 10px;
+}
+small {
+  font-size: 12px;
+}
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+small,
+.muted {
+  color: var(--sm-muted);
+}
+small {
+  display: block;
+}
+.page-nav,
+.actions,
+.section-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.page-nav {
+  margin-bottom: 24px;
+}
+.section-heading {
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.section-heading h2 {
+  margin: 0;
+}
+.actions .sm-control,
+.section-heading .sm-control {
+  width: auto;
+  max-width: 100%;
+}
+.notice {
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  background: var(--sm-accent-soft);
+  border: 1px solid var(--sm-accent-border);
+  border-radius: var(--sm-control-radius);
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+.stats strong {
+  display: block;
+  font-size: 32px;
+  margin-top: 8px;
+}
+.week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+.day {
+  display: grid;
+  padding: 16px 8px;
+  text-align: center;
+  white-space: normal;
+}
+.day small {
+  color: inherit;
+}
+.two-columns {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 20px;
+  min-width: 0;
+}
+.two-columns > * {
+  min-width: 0;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.full {
+  grid-column: 1/-1;
+}
+.exercise-row,
+.record-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--sm-border);
+}
+.exercise-row:last-child {
+  margin-bottom: 20px;
+}
+.exercise-row > div {
+  min-width: 0;
+}
+.exercise-row p {
+  font-size: 13px;
+}
+.plan-targets {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+.plan-targets input {
+  width: 80px;
+}
+.plan-targets label {
+  font-size: 11px;
+}
+.text-button {
+  border: 0;
+  background: transparent;
+  color: var(--sm-accent);
+  padding: 5px;
+  cursor: pointer;
+}
+.exercise-name {
+  font-size: 16px;
+  font-weight: 600;
+  padding-left: 0;
+}
+.danger {
+  color: var(--sm-danger);
+}
+.tag {
+  background: var(--sm-accent-soft);
+  color: var(--sm-accent);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+.table-scroll {
+  overflow: auto;
+  max-width: 100%;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+th,
+td {
+  padding: 12px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--sm-border);
+  white-space: nowrap;
+}
+td small {
+  white-space: normal;
+  max-width: 200px;
+}
+th {
+  font-size: 12px;
+  color: var(--sm-muted);
+}
+.empty {
+  padding: 30px 12px;
+  text-align: center;
+  color: var(--sm-muted);
+}
+.library-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  max-height: 650px;
+  overflow: auto;
+}
+.library-item {
+  padding: 14px;
+  text-align: left;
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-control-radius);
+  background: var(--sm-surface);
+  color: var(--sm-text);
+}
+.library-item.selected {
+  background: var(--sm-accent-soft);
+  border-color: var(--sm-accent-border);
+}
+.guide {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.backup-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.backup-grid h3 {
+  margin-top: 0;
+}
+.backup-grid .sm-button {
+  font-size: 12px;
+  padding: 8px 10px;
+}
+@media (max-width: 900px) {
+  .exercise-row {
+    display: block;
+  }
+  .plan-targets {
+    margin-top: 16px;
+  }
+  .two-columns {
+    grid-template-columns: 1fr;
+  }
+  .week-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .backup-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 540px) {
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .week-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sm-brand .muted {
+    display: none;
+  }
+  .page-nav {
+    gap: 6px;
+  }
+  .page-nav .sm-button {
+    padding: 8px 11px;
+  }
+  .form-grid {
+    gap: 12px;
+  }
+  .section-heading {
+    align-items: flex-start;
+  }
+  .actions .sm-control {
+    max-width: 100%;
+  }
+  .plan-targets input {
+    width: 70px;
+  }
+  .exercise-row {
+    overflow-wrap: anywhere;
+  }
+}

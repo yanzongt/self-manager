@@ -501,7 +501,7 @@ def create_server(port, scheduler=None, data_path=None, investment=None):
                     "/*SERVER_TOKEN*/null", json.dumps(token), 1
                 )
                 return self.reply(200, page.encode(), "text/html; charset=utf-8")
-            if path.startswith(("/checkins/assets/", "/pdca/assets/", "/sensor-fov/assets/")):
+            if path.startswith(("/checkins/assets/", "/pdca/assets/", "/sensor-fov/assets/", "/strength/assets/")):
                 app_name = path.split("/")[1]
                 assets = (APPS_ROOT / app_name / ".generated" / "static" / "assets").resolve()
                 asset = (assets / path.removeprefix(f"/{app_name}/assets/")).resolve()
@@ -519,11 +519,10 @@ def create_server(port, scheduler=None, data_path=None, investment=None):
             if path == "/api/tools":
                 return self.reply(200, {"investment": investment_app is not None})
             if path in ("/strength/", "/strength_training_tracker.html"):
-                return self.reply(
-                    200,
-                    (APPS_ROOT / "strength" / "index.html").read_bytes(),
-                    "text/html; charset=utf-8",
-                )
+                page = APPS_ROOT / "strength" / ".generated" / "static" / "index.html"
+                if not page.is_file():
+                    return self.reply(503, {"error": "力量训练前端尚未构建，请运行 apps/strength/setup.sh 和 npm run build --prefix apps/strength"})
+                return self.reply(200, page.read_bytes(), "text/html; charset=utf-8")
             if path in ("/pdca/", "/pdca_focus.html"):
                 if not PAGE.is_file():
                     return self.reply(503, {"error": "PDCA 前端尚未构建，请运行 apps/pdca/setup.sh 和 npm run build --prefix apps/pdca"})

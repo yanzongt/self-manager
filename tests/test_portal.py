@@ -1,5 +1,6 @@
 """Exercise the mounted backtest routes with the existing real-engine HTTP suite."""
 
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -31,15 +32,19 @@ class PortalTests(WebTests):
         for path, expected in [
             ("/", "把时间，留给重要的事。"),
             ("/pdca/", "window.PDCA_NATIVE_TOKEN="),
-            ("/strength/", "strengthTracker_v1"),
+            ("/strength/", "力量训练"),
             ("/sensor-fov/", "传感器视场"),
             ("/pdca_focus.html", "window.PDCA_NATIVE_TOKEN="),
-            ("/strength_training_tracker.html", "strengthTracker_v1"),
+            ("/strength_training_tracker.html", "力量训练"),
         ]:
             with self.subTest(path=path):
                 status, _, body = super().http(path)
                 self.assertEqual(status, 200)
                 self.assertIn(expected.encode(), body)
+        strength = super().http("/strength/")[2].decode()
+        for asset in re.findall(r'(?:src|href)="(/strength/assets/[^" ]+)"', strength):
+            self.assertEqual(super().http(asset)[0], 200)
+        self.assertEqual(super().http("/strength/assets/missing.js")[0], 404)
         self.assertIn(b'"investment": true', super().http("/api/tools")[2])
         for path in ("/pdca", "/strength", "/investment", "/sensor-fov"):
             self.assertEqual(super().http(path)[0], 200)  # follows redirect

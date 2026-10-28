@@ -1,4 +1,4 @@
-"""仅监听本机的网页入口，无额外服务或前端构建依赖。"""
+"""仅监听本机的网页入口，提供 Vite 构建产物及 Python 回测接口。"""
 
 import argparse
 from functools import partial
@@ -12,7 +12,7 @@ import webbrowser
 
 from f_analysis.web_service import PoolConflict, WebApplication
 
-STATIC = Path(__file__).resolve().parents[1] / "f_analysis/web_static"
+STATIC = Path(__file__).resolve().parents[1] / ".generated/static"
 DEFAULT_PORT = 8766
 
 
@@ -102,19 +102,23 @@ class Handler(BaseHTTPRequestHandler):
                         file.name,
                     )
                 raise FileNotFoundError("接口不存在")
-            files = {
-                "/": "index.html",
-                "/index.html": "index.html",
-                "/app.js": "app.js",
-                "/styles.css": "styles.css",
-            }
-            if path in files:
-                file = STATIC / files[path]
+            if path in ("/", "/index.html") or path.startswith("/assets/"):
+                relative = (
+                    "index.html" if path in ("/", "/index.html") else path.lstrip("/")
+                )
+                file = (STATIC / relative).resolve()
+                if not file.is_relative_to(STATIC.resolve()) or file.suffix not in (
+                    ".html", ".js", ".css"
+                ):
+                    raise FileNotFoundError("页面不存在")
+                if not file.is_file():
+                    if relative == "index.html":
+                        return self._send(503, {"error": "投资前端尚未构建，请运行 apps/investment/setup.sh 和 npm run build --prefix apps/investment"})
+                    raise FileNotFoundError("资源不存在")
                 return self._send(
                     200,
                     file.read_bytes(),
-                    (mimetypes.guess_type(file.name)[0] or "text/plain")
-                    + "; charset=utf-8",
+                    (mimetypes.guess_type(file.name)[0] or "text/plain") + "; charset=utf-8",
                 )
             raise FileNotFoundError("页面不存在")
         except FileNotFoundError as exc:

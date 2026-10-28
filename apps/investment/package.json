@@ -1,0 +1,22 @@
+{
+  "name": "self-manager-investment",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "vue-tsc --noEmit && vite build",
+    "test": "vitest run",
+    "test:browser": "node test-browser.mjs"
+  },
+  "dependencies": {
+    "vue": "3.5.44"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.10",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "4.1.12",
+    "vue-tsc": "3.3.13",
+    "playwright-core": "1.64.1"
+  }
+}

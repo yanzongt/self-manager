@@ -1,0 +1,352 @@
+h2 {
+  font-size: 19px;
+  margin: 0 0 16px;
+  font-weight: 600;
+}
+h3 {
+  font-size: 15px;
+  margin: 0;
+}
+small,
+.muted {
+  color: var(--sm-muted);
+}
+small {
+  display: block;
+  font-size: 12px;
+}
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+button svg {
+  display: none;
+}
+.actions,
+.section-heading,
+.section-title,
+.pool-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.section-heading,
+.section-title,
+.pool-footer {
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.section-heading h2 {
+  margin: 0;
+}
+.section-heading .sm-control {
+  width: auto;
+  max-width: 100%;
+}
+.page-nav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+.workspace-grid > * {
+  min-width: 0;
+}
+.results-area,
+.result-column {
+  display: grid;
+  gap: 20px;
+}
+.config-section {
+  padding: 22px 0;
+  border-bottom: 1px solid var(--sm-border);
+}
+.config-section:first-of-type {
+  padding-top: 8px;
+}
+.config-section label {
+  margin-bottom: 12px;
+}
+.config-section p {
+  margin: 8px 0;
+}
+.two-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.field {
+  margin: 14px 0;
+}
+.field label {
+  margin-bottom: 6px;
+}
+.field label span {
+  font-size: 11px;
+  color: var(--sm-muted);
+}
+.input-unit {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.input-unit .sm-control {
+  min-width: 0;
+}
+.rule-note,
+.data-hint {
+  color: var(--sm-muted);
+  font-size: 12px;
+}
+.pool-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 80px 24px;
+  gap: 6px;
+  align-items: center;
+}
+.pool-row > * {
+  min-width: 0;
+}
+.pool-row input {
+  padding: 8px;
+  min-width: 0;
+}
+.pool-row label {
+  font-size: 11px;
+}
+.pool-footer {
+  font-size: 12px;
+  color: var(--sm-muted);
+  margin: 12px 0 20px;
+}
+.strategy-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-control-radius);
+  margin-top: 10px;
+  cursor: pointer;
+}
+.strategy-option:has(input:checked) {
+  background: var(--sm-accent-soft);
+  border-color: var(--sm-accent-border);
+}
+.strategy-option input {
+  flex: 0 0 auto;
+}
+.strategy-option strong {
+  font-weight: 550;
+}
+.strategy-option small {
+  margin-top: 3px;
+}
+.strategy-icon,
+.option-check {
+  display: none;
+}
+.strategy-settings {
+  margin: 12px 0;
+  padding: 4px 12px;
+  border-left: 2px solid var(--sm-accent-border);
+  background: var(--sm-surface-muted);
+}
+.run-controls {
+  padding-top: 24px;
+}
+.run-controls .sm-button {
+  width: 100%;
+}
+.run-controls p {
+  font-size: 11px;
+  color: var(--sm-muted);
+}
+.text-button {
+  background: transparent;
+  color: var(--sm-accent);
+  border: 0;
+  padding: 6px;
+  font-size: 13px;
+  text-decoration: none;
+}
+.danger {
+  color: var(--sm-danger);
+}
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.metric-card {
+  padding: 18px;
+}
+.metric-card span {
+  font-size: 12px;
+}
+.metric-card strong {
+  display: block;
+  font-size: 22px;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+.notice {
+  background: var(--sm-accent-soft);
+  border: 1px solid var(--sm-accent-border);
+  border-radius: var(--sm-control-radius);
+  padding: 12px 16px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+.notice.error {
+  background: var(--sm-danger-soft);
+  border-color: var(--sm-danger);
+  color: var(--sm-danger);
+}
+.table-scroll {
+  max-width: 100%;
+  overflow: auto;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+td,
+th {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--sm-border);
+  text-align: left;
+  white-space: nowrap;
+}
+th {
+  color: var(--sm-muted);
+  font-weight: 550;
+}
+.empty {
+  color: var(--sm-muted);
+  text-align: center;
+  padding: 36px 10px;
+}
+.results-area .page-nav {
+  margin: 18px 0;
+}
+.results-area .page-nav button {
+  padding: 7px 10px;
+  font-size: 12px;
+}
+.method-note {
+  font-size: 12px;
+  line-height: 1.8;
+}
+progress {
+  width: 100%;
+  accent-color: var(--sm-accent);
+  margin-top: 12px;
+}
+.history-row {
+  padding: 22px 0;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--sm-border);
+  overflow-wrap: anywhere;
+}
+.history-row > div {
+  min-width: 0;
+}
+dialog {
+  max-width: min(560px, calc(100% - 36px));
+  border: 1px solid var(--sm-border);
+  border-radius: var(--sm-radius);
+  background: var(--sm-surface);
+  color: var(--sm-text);
+  padding: 28px;
+  box-shadow: var(--sm-dialog-shadow);
+}
+dialog::backdrop {
+  background: var(--sm-overlay);
+}
+dialog li {
+  margin: 16px 0;
+}
+.quick-options {
+  display: flex;
+  gap: 8px;
+}
+.sm-eyebrow {
+  margin-bottom: 10px;
+}
+.section-kicker {
+  display: none;
+}
+@media (max-width: 1000px) {
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+  .config-panel {
+    max-width: 100%;
+  }
+}
+@media (max-width: 540px) {
+  .sm-brand .muted {
+    display: none;
+  }
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .metric-card {
+    padding: 14px;
+  }
+  .metric-card strong {
+    font-size: 19px;
+  }
+  .history-row {
+    flex-direction: column;
+  }
+  .two-fields {
+    grid-template-columns: 1fr;
+  }
+  .pool-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 65px 20px;
+    gap: 4px;
+  }
+  .pool-row input {
+    font-size: 12px;
+  }
+  .section-heading {
+    align-items: flex-start;
+  }
+  .page-nav .sm-button {
+    padding: 8px 12px;
+  }
+}
+/* Let nested grid tracks shrink while wide report tables scroll inside cards. */
+.results-area,
+.result-column {
+  grid-template-columns: minmax(0, 1fr);
+}
+.results-area > *,
+.result-column > * {
+  min-width: 0;
+}
+.cache-actions {
+  margin-bottom: 16px;
+}
+.ma-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+label.small:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}

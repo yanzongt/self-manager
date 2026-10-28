@@ -27,3 +27,9 @@ node_modules/
 # Sensor FOV frontend dependencies, lockfile, and build output
 /apps/sensor-fov/.generated/
 /apps/sensor-fov/node_modules
+
+/apps/strength/.generated/
+/apps/strength/node_modules
+
+/apps/investment/.generated/
+/apps/investment/node_modules

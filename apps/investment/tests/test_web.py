@@ -7,6 +7,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 from threading import Thread
+from unittest.mock import patch
 import time
 import unittest
 from urllib.error import HTTPError
@@ -141,7 +142,10 @@ class WebTests(unittest.TestCase):
         self.assertIn("策略回测".encode(), body)
         self.assertIn("Content-Security-Policy", headers)
         self.assertEqual(headers["Cache-Control"], "no-store")
-        for asset in ["/app.js", "/styles.css"]:
+        import re
+        assets = re.findall(r'(?:src|href)="(\./assets/[^" ]+)"', body.decode())
+        self.assertEqual(len(assets), 2)
+        for asset in [url.removeprefix(".") for url in assets]:
             self.assertEqual(self.http(asset)[0], 200)
         status, _, body = self.http("/api/config")
         self.assertEqual(status, 200)
@@ -151,6 +155,21 @@ class WebTests(unittest.TestCase):
         self.assertEqual(json.loads(body)["capabilities"]["ma_independent_version"], 1)
         self.assertEqual(json.loads(body)["capabilities"]["ma_contributions_version"], 1)
         self.assertEqual(json.loads(body)["capabilities"]["ma_entry_budget_version"], 1)
+
+    def test_frontend_missing_build_and_asset_path_boundaries(self):
+        frontend = self.root / "frontend"
+        with patch("scripts.web.STATIC", frontend):
+            self.assertEqual(self.http("/")[0], 503)
+            self.assertEqual(self.http("/api/config")[0], 200)
+            (frontend / "assets").mkdir(parents=True)
+            (frontend / "index.html").write_text("<!doctype html><title>test</title>")
+            (frontend / "assets/app.js").write_text("export {}")
+            secret = self.root / "private.js"
+            secret.write_text("private data")
+            (frontend / "assets/linked.js").symlink_to(secret)
+            self.assertEqual(self.http("/assets/app.js")[0], 200)
+            for asset in ("/assets/linked.js", "/assets/../../private.js", "/assets/missing.js"):
+                self.assertEqual(self.http(asset)[0], 404)
 
     def test_background_run_uses_real_engine_and_exports_all_results(self):
         run_id = self.complete_run()

@@ -33,9 +33,11 @@ Windows 激活命令为 `.venv\Scripts\activate`。pip 安装按照 `pyproject.t
 
 ## 网页工作台（推荐）
 
-启动本机网页，无需安装 Node.js 或构建前端：
+网页前端采用 Vue 3 + TypeScript + Vite。独立启动前先安装 Node.js 22.12+ 并构建：
 
 ```bash
+./setup.sh
+npm run build
 uv sync --locked
 uv run --locked python main.py web --open
 ```
@@ -149,8 +151,9 @@ apps/investment/
 │   ├── reporting.py              # 标准结果输出及对比图
 │   ├── research.py               # 独立子区间与参数扰动分析
 │   ├── adapters.py               # 原双资产研究接口的适配层
-│   ├── web_service.py            # 网页后台任务、历史及结果读取
-│   └── web_static/               # 无构建依赖的 HTML / CSS / JS 界面
+│   └── web_service.py            # 网页后台任务、历史及结果读取
+├── src/                          # Vue 组件、类型模型与 API 数据访问
+├── .generated/                   # npm 依赖、锁文件与 static/ 构建产物（忽略）
 ├── configs/pools/example.json    # 可编辑的股票池示例
 ├── scripts/
 │   ├── __init__.py                # Python 包声明
@@ -511,14 +514,16 @@ uv run --locked python -m unittest discover -s tests -v
 
 测试使用模拟行情执行 6 个脚本入口，比较首次运行与离线重跑的 CSV，验证 CSV/PNG/参数记录、无窗口运行和默认输出目录隔离；另验证缓存复用、只下载新增标的、完整历史替换、下载失败及数据库写入失败时的事务回滚。单股票回测另以可手算行情验证信号边界、次日成交、手续费、未平仓处理、无交易情况、未来行情不改变历史成交和最大回撤，并验证买入持有首日成交、单次收费、独立持仓与历史收益、基准一致性和策略选择。多资产测试另覆盖平均成本分摊、同时买入的资金分配、卖出资金复用、持仓漂移、非同步报价、上市时间差异、日历调仓、目标权重校验和每日资金守恒。网页测试通过本机 HTTP 接口运行真实回测引擎，验证后台状态、完整结果下载、配置校验、缓存读取和文件访问边界；行情使用测试数据。测试不访问 Yahoo Finance。这些检查用于验证项目整理后的运行流程，不是对回测模型准确性的全面验证。
 
-网页前端另有可选的 DOM 逻辑测试（不是真实浏览器的版式测试），使用独立临时目录安装开发测试依赖，不影响项目运行：
+网页前端使用严格 TypeScript 检查、模型单元测试及真实 Chromium 回归。依赖、锁文件、构建资源均保存在本模块的 `.generated/` 中：
 
 ```bash
-npm install --prefix /tmp/f-analysis-dom-test --no-audit --no-fund happy-dom
-HAPPY_DOM_MODULE=/tmp/f-analysis-dom-test/node_modules/happy-dom/lib/index.js node tests/web_ui_smoke.mjs
+./setup.sh
+npm run build
+npm test
+npm run test:browser
 ```
 
-该测试的 API 全部使用固定测试数据，不会访问行情服务或创建真实回测；覆盖股票池编辑、MA120 切换、后台进度、曲线切换、明细、参数恢复、历史和缓存入口。
+浏览器测试默认使用 `/usr/bin/google-chrome`，可通过 `CHROME_PATH` 指定。API 使用固定测试数据，不访问行情服务或创建真实回测；覆盖股票池、百分比参数、服务能力检查、后台轮询、运行中编辑、曲线和明细、草稿恢复、失败状态、历史、缓存及手机布局。原 `node tests/web_ui_smoke.mjs` 命令转发到同一个浏览器回归入口。
 
 ## 截面动量与稳定性研究
 

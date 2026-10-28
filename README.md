@@ -11,7 +11,7 @@
 ./start.sh
 ```
 
-首次启动会使用 Node.js（22.12+）和 npm 安装并构建 PDCA、打卡与传感器视场前端；之后启动使用本机构建结果。自动打开 <http://127.0.0.1:8765>。只启动一个进程、监听一个端口，无需分别启动回测服务。两个脚本均支持从任意目录调用。
+首次启动会使用 Node.js（22.12+）和 npm 安装并构建 PDCA、力量训练、投资回测、打卡与传感器视场前端；之后启动使用本机构建结果。自动打开 <http://127.0.0.1:8765>。只启动一个进程、监听一个端口，无需分别启动回测服务。两个脚本均支持从任意目录调用。
 
 | 入口 | 地址 |
 | --- | --- |
@@ -40,11 +40,12 @@ self-manager/
 ├── apps/
 │   ├── portal/index.html    # 个人主页
 │   ├── pdca/                # 行为闭环（Vue + TypeScript + Vite）
-│   ├── strength/index.html  # 力量训练
+│   ├── strength/           # 力量训练（Vue + TypeScript + Vite）
 │   ├── checkins/            # 日常打卡（Vue + TypeScript + Vite）
 │   ├── sensor-fov/          # 传感器视场（Vue + TypeScript + Three.js）
-│   └── investment/          # 原 f-analysis，保留独立 Python 项目
-│       ├── f_analysis/      # 回测引擎和网页资源
+│   └── investment/          # Vue + TypeScript + Vite 前端与独立 Python 项目
+│       ├── src/             # Vue 组件、类型模型与 API 数据访问
+│       ├── f_analysis/      # Python 回测引擎与服务
 │       ├── scripts/         # 命令行与独立服务
 │       ├── configs/         # 内置股票池
 │       ├── tests/           # 投资模块测试
@@ -81,6 +82,12 @@ self-manager/
 以下命令从仓库根目录执行，使用临时数据或模拟行情：
 
 ```sh
+./apps/strength/setup.sh
+npm run build --prefix apps/strength
+npm test --prefix apps/strength
+./apps/investment/setup.sh
+npm run build --prefix apps/investment
+npm test --prefix apps/investment
 ./apps/pdca/setup.sh
 npm run build --prefix apps/pdca
 npm test --prefix apps/pdca
@@ -97,6 +104,8 @@ npm test --prefix apps/sensor-fov
 前端浏览器测试使用临时数据，需要本机 Chrome：
 
 ```sh
+npm run test:browser --prefix apps/strength
+npm run test:browser --prefix apps/investment
 npm run test:browser --prefix apps/pdca
 npm run test:storage --prefix apps/pdca
 npm run test:browser --prefix apps/checkins
@@ -109,7 +118,7 @@ npm run test:browser --prefix apps/sensor-fov
 PLAYWRIGHT_CORE="$PWD/apps/pdca/.generated/node_modules/playwright-core" node tests/test_strength.js
 ```
 
-投资网页的可选 DOM 测试见投资模块说明。
+投资网页使用真实 Chromium 与模拟 API 进行交互回归，见投资模块说明。
 
 ## 日常打卡
 
@@ -130,3 +139,11 @@ PDCA 的依赖、自动生成的锁文件和构建结果均放在 `apps/pdca/.ge
 ## 页面统一风格
 
 主页、PDCA、打卡和传感器视场共同引用 `apps/shared/theme.css`，统一采用米白背景、深绿文字、柔和绿色点缀和浅色卡片。新增页面应使用共享的 `sm-*` 布局和控件类，避免另设全站字体和配色。开发要求见 [AGENTS.md](AGENTS.md)，样式约定和新增页面模板见 [统一风格说明](docs/ui-style.md)。修改共享主题后，需要重新构建 PDCA、打卡与传感器视场前端。
+
+## 力量训练与投资前端开发
+
+两个模块均使用 Vue 3、严格 TypeScript 和 Vite，入口位于各自的 `src/main.ts`。`src/model.ts` 负责类型、校验和兼容转换，`useStrength.ts` / `useInvestment.ts` 管理数据与持久化，组件负责各业务视图。投资回测算法、Python CLI 和数据目录继续沿用原实现。
+
+依赖、npm 锁文件和构建产物均位于模块内忽略的 `.generated/`，`node_modules` 为本地符号链接。运行模块内 `setup.sh` 安装依赖，修改源码后执行 `npm run build --prefix apps/strength` 或 `npm run build --prefix apps/investment`。`start.sh` 首次启动会自动构建；直接运行 Python 服务前需自行构建。两个页面首先加载共享 `apps/shared/theme.css`，图表共用 `apps/shared/LineChart.vue`。
+
+力量训练保持 `strengthTracker_v1` 存储键，兼容旧版重量数据及 v1/v2 JSON 备份；投资页面保持草稿和后台任务的存储键，可继续打开已有回测结果。Vite 开发时力量训练 API 代理指向统一服务 8765，投资代理指向独立回测服务 8766。可使用 `apps/<模块>/.generated/node_modules/.bin/vite apps/<模块>` 启动开发服务器。
